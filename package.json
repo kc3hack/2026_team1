@@ -1,0 +1,74 @@
+{
+  "name": "docmate",
+  "displayName": "DocMate",
+  "description": "AI Documentation Assistant",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.97.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "docmate.explain",
+        "title": "DocMate: Explain"
+      }
+    ],
+    "configuration": {
+      "title": "DocMate",
+      "properties": {
+        "docmate.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Google Gemini API Key"
+        },
+        "docmate.model": {
+          "type": "string",
+          "default": "gemini-2.5-flash",
+          "description": "Gemini Model Name (e.g. gemini-2.5-flash, gemini-1.5-pro)"
+        }
+      }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "docmate.explain",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.97.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@typescript-eslint/eslint-plugin": "^8.22.0",
+    "@typescript-eslint/parser": "^8.22.0",
+    "eslint": "^9.19.0",
+    "typescript": "^5.7.3",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "@types/jsdom": "^21.1.7",
+    "@types/turndown": "^5.0.5",
+    "@types/marked": "^4.0.8"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.2.1",
+    "jsdom": "^24.0.0",
+    "turndown": "^7.2.0",
+    "marked": "^4.3.0"
+  },
+  "publisher": "kudo"
+}

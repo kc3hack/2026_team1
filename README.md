@@ -1,45 +1,40 @@
-# プロダクト名 
-<!-- プロダクト名に変更してください -->
 
-![プロダクト名](https://kc3.me/cms/wp-content/uploads/2026/02/444e7120d5cdd74aa75f7a94bf8821a5-scaled.png)
-<!-- プロダクト名・イメージ画像を差し変えてください -->
+# DocMate (ドックメイト)
 
+DocMateは、MDN Web Docsのドキュメントを検索し、AI (Google Gemini) を利用して日本語の要約と実行可能なサンプルコードを提供するVS Code拡張機能です。
 
-## チーム名
-チーム○ XXXX
-<!-- チームIDとチーム名を入力してください -->
+## 機能 (Features)
 
+- **ドキュメント解説**: 選択したキーワード（例: `Array.map`）について、MDNのドキュメントを検索し、要約を表示します。
+- **実行可能なサンプルコード**: AIが生成したサンプルコードを、拡張機能内で直接実行し、結果を確認できます。
+- **自動修正**: コードの実行に失敗した場合、AIがエラー内容を分析し、自動的にコードの修正を試みます。
 
-## 背景・課題・解決されること
+## 必要条件 (Requirements)
 
-<!-- テーマ「関西をいい感じに」に対して、考案するプロダクトがどういった(Why)背景から思いついたのか、どのよう(What)な課題があり、どのよう(How)に解決するのかを入力してください -->
+- **Google Gemini APIキー**: この拡張機能を使用するには、Google AI StudioからAPIキーを取得する必要があります。
 
+## 拡張機能の設定 (Extension Settings)
 
-## プロダクト説明
+この拡張機能は以下の設定を提供します：
 
-<!-- 開発したプロダクトの説明を入力してください -->
+* `docmate.apiKey`: Google Gemini APIキーを設定します。(必須)
+* `docmate.model`: 使用するGeminiモデルを指定します。(デフォルト: `gemini-2.5-flash`)
 
+## 使い方 (Usage)
 
-## 操作説明・デモ動画
-[デモ動画はこちら](https://www.youtube.com/watch?v=fbzGp0XJGq8)
-<!-- 開発したプロダクトの操作説明について入力してください。また、操作説明デモ動画があれば、埋め込みやリンクを記載してください -->
+1.  JavaScript/TypeScriptファイルを開きます。
+2.  調べたいメソッドやオブジェクト（例: `Array.map`）を選択します。
+3.  右クリックメニューから **"DocMate: Explain"** を選択するか、コマンドパレット (`Cmd+Shift+P`) から **"DocMate: Explain"** を実行します。
+4.  右側にパネルが開き、要約・サンプルコード・実行結果が表示されます。
 
+## 既知の問題 (Known Issues)
 
-## 注力したポイント
+- 現在、JavaScript/TypeScript環境 (Node.js) での実行のみをサポートしています。
+- 複雑なDOM操作やブラウザ固有のAPIを含むコードは、Node.js環境では動作しない場合があります。
 
-<!-- 開発したプロダクトの中で、特に注力して作成した箇所・ポイントについて入力してください -->
-### アイデア面
+## リリースノート (Release Notes)
 
-### デザイン面
+### 0.0.1
 
-### その他
-
-## 使用技術
-
-<!-- 使用技術を入力してください -->
-
-
-<!--
-markdownの記法はこちらを参照してください！
-https://docs.github.com/ja/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax
--->
+- 初回リリース
+- MDN検索、Geminiによる要約、ローカルコード実行機能を実装
