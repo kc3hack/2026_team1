@@ -49,7 +49,7 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				);
 
-				const webviewProvider = new DocMateWebviewProvider(panel);
+				const webviewProvider = new DocMateWebviewProvider(panel, context.extensionUri, context);
 				webviewProvider.update(result.summary, result.examples, result.url);
 
 				// Handle messages from Webview
