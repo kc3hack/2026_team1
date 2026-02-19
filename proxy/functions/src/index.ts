@@ -27,12 +27,12 @@ export const geminiProxy = functions.https.onRequest(async(req,res) => {
         const clientJudgeToken = req.header("x-judge-token");
         const validJudgeToken = process.env.JUDGE_TOKEN;
 
-        const ipAddress = req.ip || req.header("x-forwarded-for") || "unknown-jp"; // ip取得
+        const clientId = req.header("x-client-id") || req.ip || "unknown-client"; // クライアントidを取得
 
         const isJudge = clientJudgeToken === validJudgeToken; // 特権モードを起動しても良いか
 
         if(!isJudge) {
-            const ipRef = db.collection("rate_limits").doc(ipAddress); // この場合ipAddressが主キー
+            const ipRef = db.collection("rate_limits").doc(clientId); // この場合クライアントidが主キー
             const doc = await ipRef.get(); // ドキュメント(dbでいうレコード)のスナップショットを取得
 
             let currentCount = 0;
