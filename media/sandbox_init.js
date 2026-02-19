@@ -55,11 +55,14 @@
 
   // --- create simple UI per root (keeps minimal, uses Monaco if available later) ---
   function initCell(rootEl) {
+
+    let monacoInstance = null;
+
     if (!rootEl) return;
     const existing = rootEl.getAttribute('data-sandbox-initialized');
     if (existing === '1') return;
 
-    const idx = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
+    const index = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
 
     // mark initialized
     rootEl.setAttribute('data-sandbox-initialized', '1');
@@ -69,7 +72,7 @@
 
     // build minimal skeleton (Monaco loader can later replace the editor area)
     rootEl.innerHTML = `
-      <div class="sandbox-ui" data-index="${idx}">
+      <div class="sandbox-ui" data-index="${index}">
         <div class="sandbox-toolbar">
           <select class="sb-langSelect"></select>
           <button class="sb-runBtn">Run</button>
@@ -104,11 +107,11 @@
     // create minimal text model (no Monaco required for now)
     const cellObj = {
       rootEl,
-      idx: String(idx),
+      index: String(index),
       outputEl: outputPre,
       append(s) { if (outputPre) { outputPre.textContent += String(s); outputPre.scrollTop = outputPre.scrollHeight; } }
     };
-    cells.set(String(idx), cellObj);
+    cells.set(String(index), cellObj);
 
     // load template handler
     loadBtn.addEventListener('click', () => {
@@ -119,29 +122,52 @@
     });
 
     // Run handler
-    runBtn.addEventListener('click', () => {
-      // read code: if Monaco present we should retrieve model, but here we just take editorContainer.textContent
-      const code = (editorContainer && editorContainer.textContent) ? editorContainer.textContent : initialCode;
-      const execCommand = execTextarea.value || '';
-      // clear output
-      if (outputPre) outputPre.textContent = '';
-      const payload = { command: 'run', language: langSelect.value || curLang, code, execCommand, index: String(idx) };
-      if (vscodeApi && typeof vscodeApi.postMessage === 'function') {
-        vscodeApi.postMessage(payload);
-      } else if (typeof window.onSandboxMessage === 'function') {
-        // fallback: host page handles execution
-        try { window.onSandboxMessage(payload); } catch (e) { console.warn('onSandboxMessage call failed', e); }
+    runBtn.addEventListener("click", () => {
+      // Run ボタン押下部分の直前に追加（既にある runBtn.addEventListener の中）
+      let code = "";
+
+      if (monacoInstance && monacoInstance.model) {
+        code = monacoInstance.model.getValue();
       } else {
-        cellObj.append('[sandbox] vs code api not available; cannot run\n');
+        code = editorContainer.textContent || "";
+      }
+
+      const execCommand = execTextarea ? execTextarea.value : "";
+
+      if (outputPre) outputPre.textContent = "";
+
+      const payload = {
+        command: "run",
+        language: langSelect.value,
+        code,
+        execCommand,
+        index
+      };
+
+      if (vscodeApi) {
+        vscodeApi.postMessage(payload);
       }
     });
 
     // attempt to load Monaco editor for nicer UI non-blocking (if allowed)
     // (we don't block if Monaco fails — skeleton UI is usable)
-    tryLoadMonaco(editorContainer, initialCode, curLang).catch(e => {
-      // fail silently — skeleton remains
-      // console.warn('Monaco load failed:', e);
-    });
+    // 既存: tryLoadMonaco(editorContainer, initialCode, curLang).catch(...);
+    tryLoadMonaco(editorContainer, initialCode, curLang)
+      .then(res => {
+        // res: { mon, model, editor }
+        monacoInstance = res;
+        // もし初期コードを editorContainer に入れていた場合は model に反映する
+        try {
+          if (monacoInstance && monacoInstance.model && typeof monacoInstance.model.setValue === 'function') {
+            monacoInstance.model.setValue(initialCode || (window.LANG_CONFIG && window.LANG_CONFIG[curLang] && window.LANG_CONFIG[curLang].templatecode) || '');
+          }
+        } catch (e) {
+          console.warn('[sandbox_init] failed to set model value:', e);
+        }
+      })
+      .catch(e => {
+        console.warn('[sandbox_init] Monaco load failed (non-fatal):', e);
+      });
   }
 
   // try to load monaco non-blocking; resolves if loaded, rejects otherwise
@@ -244,12 +270,12 @@
   window.addEventListener('message', (ev) => {
     const msg = ev.data || {};
     if (msg.command === 'result' && typeof msg.index !== 'undefined') {
-      const idx = String(msg.index);
-      const c = cells.get(idx);
+      const index = String(msg.index);
+      const c = cells.get(index);
       if (c && c.append) c.append(msg.output || '');
       else {
         // fallback: try element with id
-        const fallback = document.getElementById(`sandbox-root-${idx}`);
+        const fallback = document.getElementById(`sandbox-root-${index}`);
         if (fallback) {
           const out = fallback.querySelector('.output-area');
           if (out) out.textContent = (out.textContent || '') + (msg.output || '');
