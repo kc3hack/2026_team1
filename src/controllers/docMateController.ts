@@ -3,16 +3,19 @@ import * as vscode from 'vscode';
 import { DocService } from '../services/docService';
 import { GeminiService } from '../services/geminiService';
 import { ExecutionService } from '../services/executionService';
+import { GenerateUUIDService } from '../services/generateUUIDService';
 
 export class DocMateController {
     private docService: DocService;
     private geminiService: GeminiService;
     private executionService: ExecutionService;
+    private generateUUIDService: GenerateUUIDService;
     private maxRetries = 5;
 
-    constructor() {
+    constructor(context: vscode.ExtensionContext) {
         this.docService = new DocService();
-        this.geminiService = new GeminiService();
+        this.generateUUIDService = new GenerateUUIDService(context);
+        this.geminiService = new GeminiService(this.generateUUIDService);
         this.executionService = new ExecutionService();
     }
 
