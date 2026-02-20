@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import { GenerateUUIDService } from '../services/generateUUIDService';
+import { PROXY_URL } from '../settings/config';
 
 
 export interface Example {
@@ -187,7 +188,7 @@ Do not include markdown code fences in the output, just raw JSON.
                 'x-client-id': clientID
             };
 
-            const res = await fetch('http://127.0.0.1:5001/gen-lang-client-0402535960/asia-northeast2/geminiProxy', {
+            const res = await fetch(PROXY_URL, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify({ prompt: prompt })
