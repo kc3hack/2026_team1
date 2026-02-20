@@ -3,6 +3,7 @@ import { DocService } from '../services/docService';
 import { GeminiService } from '../services/geminiService';
 import { ExecutionService } from '../services/executionService';
 import { GenerateUUIDService } from '../services/generateUUIDService';
+import { CacheService } from '../services/cacheService';
 
 export class DocMateController {
     private docService: DocService;
@@ -10,6 +11,8 @@ export class DocMateController {
     private executionService: ExecutionService;
 
     private generateUUIDService: GenerateUUIDService;
+    private cacheService: CacheService;
+
     private maxRetries = 5;
 
     constructor(context: vscode.ExtensionContext) {
@@ -17,6 +20,7 @@ export class DocMateController {
         this.generateUUIDService = new GenerateUUIDService(context);
         this.geminiService = new GeminiService(this.generateUUIDService);
         this.executionService = new ExecutionService(context.extensionPath);
+        this.cacheService = new CacheService();
     }
 
     async explain(
@@ -34,15 +38,27 @@ export class DocMateController {
             throw new Error(`No documentation found for "${keyword}"`);
         }
 
-        // 2. Fetch Content
+        // 2. キャッシュ確認 ─ 同じ URL のドキュメントが保存済みなら即返す
+        const cached = this.cacheService.find(searchResult.url);
+        if (cached) {
+            progress.report({ message: `キャッシュから読み込み中...` });
+            console.log(`DocMateController: キャッシュヒット → ${searchResult.url}`);
+            return {
+                summary: cached.summary,
+                examples: cached.examples,
+                url: cached.url,
+            };
+        }
+
+        // 3. Fetch Content
         progress.report({ message: `Fetching documentation...` });
         const markdown = await this.docService.fetchContent(searchResult.url);
 
-        // 3. Summarize & Generate Code
+        // 4. Summarize & Generate Code
         progress.report({ message: `Summarizing and generating code with Gemini...` });
         const geminiResponse = await this.geminiService.summarize(markdown);
 
-        // 4. Initial Execution (Best Effort)
+        // 5. Initial Execution (Best Effort)
         progress.report({ message: `Executing sample codes...` });
 
         const examplesWithOutput = [];
@@ -56,11 +72,16 @@ export class DocMateController {
             });
         }
 
-        return {
+        const result = {
             summary: geminiResponse.summary,
             examples: examplesWithOutput,
-            url: searchResult.url
+            url: searchResult.url,
         };
+
+        // 6. キャッシュ保存
+        this.cacheService.save(result);
+
+        return result;
     }
 
     /**
