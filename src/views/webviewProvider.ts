@@ -1,6 +1,9 @@
 
 import * as vscode from 'vscode';
 import { marked } from 'marked';
+import * as path from "path";
+import * as fs from "fs";
+
 
 interface ExampleData {
     title: string;
@@ -12,18 +15,49 @@ interface ExampleData {
 export class DocMateWebviewProvider {
     public static readonly viewType = 'docMateResult';
 
+    private readonly mediaPath = "media";
+
     constructor(
-        private readonly panel: vscode.WebviewPanel
+        private readonly panel: vscode.WebviewPanel,
+        private extensionUri: vscode.Uri,
+        private context: vscode.ExtensionContext
     ) { }
 
     public update(summary: string, examples: ExampleData[], url: string) {
         this.panel.webview.html = this.getHtmlForWebview(summary, examples, url);
     }
 
+
+    private getNonce(): string {
+        let text = "";
+        const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        for (let i = 0; i < 32; i++) {
+                text += possible.charAt(Math.floor(Math.random() * possible.length));
+            }
+        return text;
+    }
+
     private getHtmlForWebview(summary: string, examples: ExampleData[], url: string): string {
         const summaryHtml = marked.parse(summary);
 
         const examplesHtml = examples.map((ex, index) => this.generateCellHtml(ex, index)).join('');
+
+        const scriptUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, this.mediaPath, "sandbox_init.js"));
+        const styleUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, this.mediaPath, "styles.css"));
+        const nonce = this.getNonce();
+        // const baseUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media"));
+
+        // langConfig.json を読み込み、window.LANG_CONFIG として埋め込む
+        const configPath = path.join(this.context.extensionPath, this.mediaPath, "langConfig.json");
+        let langConfigObj: any = {};
+        try {
+            const txt = fs.readFileSync(configPath, "utf8");
+            langConfigObj = JSON.parse(txt);
+        } catch (e) {
+            // 読み込み失敗しても空オブジェクトで継続
+            langConfigObj = {};
+            console.warn("DocMateWebviewProvider: langConfig.json の読み込みに失敗しました。", e);
+        }
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -83,6 +117,10 @@ export class DocMateWebviewProvider {
         .loading { display: inline-block; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
+    <link rel="stylesheet" href="${styleUri}">
+    <script nonce="${nonce}">window.LANG_CONFIG = ${JSON.stringify(langConfigObj)};</script>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+
 </head>
 <body>
     <div class="section">
@@ -150,39 +188,22 @@ export class DocMateWebviewProvider {
     }
 
     private generateCellHtml(example: ExampleData, index: number): string {
-        // Initial state: if there is output, maybe open it? Or keep collapsed?
-        // User requested toggle. Let's keep collapsed by default unless user runs it.
-        // Actually, for the initial load, let's keep it collapsed to save space, 
-        // OR open it if there is content? 
-        // User said: "Colabみたいに実行結果はtoggleで閉じれるようにできれば見やすさも向上する".
-        // Implies it might be open or closed, but closable.
-        // Let's default to CLOSED (Collapsed) for cleaner view, user can open.
-        // But wait, user wants to see results? 
-        // Let's make it OPEN by default if it has content, but toggleable.
-        // Actually, user said "unnecessary stuff exists so collapse it".
-        // So default COLLAPSED (Closed) is safer.
-
-        return `
-        <div class="cell">
-            <div class="cell-header">
-                <span>${example.title}</span>
-                <span class="cell-desc">${example.description}</span>
-            </div>
-            <div class="code-area">
-                <textarea id="code-${index}" class="code-editor">${example.code}</textarea>
-                <div class="controls">
-                    <button id="run-btn-${index}" class="run-btn" onclick="runCode(${index})">▶ Run</button>
-                </div>
-            </div>
-            <div class="output-area">
-                <div class="output-header" onclick="toggleOutput(${index})">
-                    <span id="toggle-icon-${index}">▶</span> Execution Output
-                </div>
-                <div id="output-content-${index}" class="output-content">
-${example.executionOutput}
-                </div>
-            </div>
+    // サンプル毎に sandbox 用の root を作る。id に index を含める。
+    // また、initial code を data-* 属性で埋めて、sandbox_init.js 側で拾えるようにする。
+    const escapedCode = example.code.replace(/<\/script/g, '<\\/script').replace(/</g, '&lt;');
+    return `
+        <div class="example-cell" id="example-cell-${index}">
+        <div class="example-header">
+            <strong>${example.title}</strong>
+            <div class="description">${example.description}</div>
         </div>
-        `;
+
+        <!-- Sandbox の埋め込み先 -->
+        <div id="sandbox-root-${index}" class="sandbox-embed" data-initial-code="${encodeURIComponent(escapedCode)}" data-index="${index}"></div>
+
+        <!-- place for output fallback if needed -->
+        <div id="sandbox-output-${index}" class="sandbox-output-fallback"></div>
+        </div>
+    `;
     }
 }
