@@ -1,7 +1,7 @@
 
 import * as vscode from 'vscode';
 import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
-import { GenerateUUIDService } from '../services/generateUUIDService';
+import { GenerateUUIDService } from './generateUUIDService';
 import { PROXY_URL } from '../settings/config';
 
 
@@ -74,13 +74,13 @@ ${markdown}
             return this.normalizeGeminiResult(parsed);
         } catch (primaryError) {
             console.warn('Failed to call the Gemini API directly', primaryError);
-            
-            try{
+
+            try {
                 const fallbackResult = await this.fetchGeminiProxyServer(prompt);
                 const fallbackParsed = this.parseGeminiResponse(fallbackResult);
                 return this.normalizeGeminiResult(fallbackParsed);
-            } catch(fallbackError){
-                console.error('Fallback also failed',fallbackError);
+            } catch (fallbackError) {
+                console.error('Fallback also failed', fallbackError);
 
                 throw fallbackError;
             }
@@ -124,7 +124,7 @@ Do not include markdown code fences in the output, just raw JSON.
      * @param result 
      * @returns 
      */
-    private normalizeGeminiResult(parsed:GeminiResponse): GeminiResponse {
+    private normalizeGeminiResult(parsed: GeminiResponse): GeminiResponse {
 
         if (!Array.isArray(parsed.examples)) {
             // heuristic fix if AI returns bad format
