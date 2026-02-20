@@ -6,7 +6,6 @@ import { DocMateWebviewProvider } from './views/webviewProvider';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('DocMate is now active!');
-// <<<<<<< HEAD
 
 // 	const controller = new DocMateController(context.extensionPath);
 // =======
