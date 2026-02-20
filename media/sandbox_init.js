@@ -26,6 +26,9 @@
   const cells = new Map();
   window.__sandbox_cells = cells;
 
+  /** 現在実行中のセルの index を記録する（stream/exit を正しいセルに届けるため） */
+  let activeIndex = null;
+
   // ── エディタ高さ計算ユーティリティ ──────────────────────────
   //  CSS の --md-editor-* トークンと合わせる
   const EDITOR_LINE_HEIGHT = 24;   // px  (monaco fontSize:13 + 余白)
@@ -37,9 +40,9 @@
    * コード文字列の行数からエディタの最適な高さ (px) を計算する。
    * min: EDITOR_MIN_LINES, max: EDITOR_MAX_LINES でクランプ。
    */
-  function calcEditorHeight(code) {
+  function calcEditorHeight(code, isModal) {
     const lines = (code || '').split('\n').length;
-    const clamped = Math.max(EDITOR_MIN_LINES, Math.min(EDITOR_MAX_LINES, lines));
+    const clamped = isModal ? Math.max(EDITOR_MIN_LINES, lines) : Math.max(EDITOR_MIN_LINES, Math.min(EDITOR_MAX_LINES, lines))
     return clamped * EDITOR_LINE_HEIGHT + EDITOR_PADDING_V * 2;
   }
 
@@ -49,9 +52,13 @@
    * @param {object|null} monacoRef    { editor } | null
    * @param {string}      code         現在のコード文字列
    */
-  function updateEditorHeight(containerEl, monacoRef, code) {
+  /**
+   * エディタコンテナの高さを更新する。
+   * isModal が true の場合は常に MAX 行数の高さを使う。
+   */
+  function updateEditorHeight(containerEl, monacoRef, code, isModal) {
     if (!containerEl) return;
-    const h = calcEditorHeight(code);
+    const h = calcEditorHeight(code, isModal);
     containerEl.style.height = h + 'px';
     // Monaco に新しいサイズを伝える
     if (monacoRef && monacoRef.editor) {
@@ -92,7 +99,8 @@
     const existing = rootEl.getAttribute('data-sandbox-initialized');
     if (existing === '1') return;
 
-    const index = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
+    const index   = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
+    const isModal = rootEl.getAttribute('data-is-modal') === '1';
     rootEl.setAttribute('data-sandbox-initialized', '1');
 
     const initialRaw = rootEl.getAttribute('data-initial-code') || '';
@@ -131,7 +139,7 @@
     const outputPre       = rootEl.querySelector('.output-area');
 
     // ── 初期高さをコード行数から計算して即セット ──────────────
-    updateEditorHeight(editorContainer, null, initialCode);
+    updateEditorHeight(editorContainer, null, initialCode, isModal);
 
     // populate languages
     const LANG_CONFIG = window.LANG_CONFIG || {};
@@ -170,11 +178,11 @@
       if (monacoRef.model) {
         try {
           monacoRef.model.setValue(initialCode);
-          updateEditorHeight(editorContainer, monacoRef, initialCode);
+          updateEditorHeight(editorContainer, monacoRef, initialCode, isModal);
         } catch (_) {}
       } else {
         editorContainer.textContent = initialCode;
-        updateEditorHeight(editorContainer, null, initialCode);
+        updateEditorHeight(editorContainer, null, initialCode, isModal);
       }
     });
 
@@ -200,6 +208,7 @@
         execCommand,
         index
       };
+      activeIndex = String(index);
       if (vscodeApi) vscodeApi.postMessage(payload);
     });
 
@@ -216,7 +225,7 @@
             || '';
           monacoRef.model.setValue(val);
           // Monaco 描画後に再度高さ調整
-          updateEditorHeight(editorContainer, monacoRef, val);
+          updateEditorHeight(editorContainer, monacoRef, val, isModal);
         } catch (e) {
           console.warn('[sandbox_init] failed to set model value:', e);
         }
@@ -225,7 +234,7 @@
         monacoRef.model.onDidChangeContent(() => {
           try {
             const code = monacoRef.model.getValue();
-            updateEditorHeight(editorContainer, monacoRef, code);
+            updateEditorHeight(editorContainer, monacoRef, code, isModal);
           } catch (_) {}
         });
       })
@@ -392,6 +401,7 @@
     const modalIndex = `modal-${srcIndex}`;
 
     // カード内 HTML を構築
+    // .dm-modal-body がスクロールコンテナになる
     modalCard.innerHTML = `
       <div class="dm-modal-header">
         <div class="dm-modal-header-text">
@@ -400,12 +410,15 @@
         </div>
         <button class="dm-modal-close" title="閉じる">&#x2715;</button>
       </div>
-      <div
-        id="sandbox-root-${modalIndex}"
-        class="sandbox-embed"
-        data-initial-code="${initialRaw}"
-        data-index="${modalIndex}"
-      ></div>
+      <div class="dm-modal-body">
+        <div
+          id="sandbox-root-${modalIndex}"
+          class="sandbox-embed"
+          data-initial-code="${initialRaw}"
+          data-index="${modalIndex}"
+          data-is-modal="1"
+        ></div>
+      </div>
     `;
 
     // 閉じるボタン
@@ -482,22 +495,30 @@
       return;
     }
     if (msg.kind === 'stream') {
-      if (msg.stdout) cells.forEach(c => c.append(msg.stdout));
-      if (msg.stderr) cells.forEach(c => c.append(msg.stderr));
+      const ac = activeIndex !== null ? cells.get(activeIndex) : null;
+      if (ac) {
+        if (msg.stdout) ac.append(msg.stdout);
+        if (msg.stderr) ac.append(msg.stderr);
+      }
       return;
     }
     if (msg.kind === 'exit') {
-      cells.forEach(c => c.append(`\n[process exited, code=${msg.code}, signal=${msg.signal}]\n`));
-      cells.forEach((c, idx) => restoreRunBtn(idx));
+      const ac = activeIndex !== null ? cells.get(activeIndex) : null;
+      if (ac) ac.append(`\n[process exited, code=${msg.code}, signal=${msg.signal}]\n`);
+      if (activeIndex !== null) restoreRunBtn(activeIndex);
+      activeIndex = null;
       return;
     }
     if (msg.kind === 'status') {
-      cells.forEach(c => c.append(`[status] ${msg.text}\n`));
+      const ac = activeIndex !== null ? cells.get(activeIndex) : null;
+      if (ac) ac.append(`[status] ${msg.text}\n`);
       return;
     }
     if (msg.kind === 'error' && msg.text) {
-      cells.forEach(c => c.append(`[error] ${msg.text}\n`));
-      cells.forEach((c, idx) => restoreRunBtn(idx));
+      const ac = activeIndex !== null ? cells.get(activeIndex) : null;
+      if (ac) ac.append(`[error] ${msg.text}\n`);
+      if (activeIndex !== null) restoreRunBtn(activeIndex);
+      activeIndex = null;
       return;
     }
   });
