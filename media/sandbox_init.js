@@ -26,6 +26,39 @@
   const cells = new Map();
   window.__sandbox_cells = cells;
 
+  // ── エディタ高さ計算ユーティリティ ──────────────────────────
+  //  CSS の --md-editor-* トークンと合わせる
+  const EDITOR_LINE_HEIGHT = 21;   // px  (monaco fontSize:13 + 余白)
+  const EDITOR_PADDING_V   = 8;    // px  (上下パディング合計の半分)
+  const EDITOR_MIN_LINES   = 4;
+  const EDITOR_MAX_LINES   = 30;
+
+  /**
+   * コード文字列の行数からエディタの最適な高さ (px) を計算する。
+   * min: EDITOR_MIN_LINES, max: EDITOR_MAX_LINES でクランプ。
+   */
+  function calcEditorHeight(code) {
+    const lines = (code || '').split('\n').length;
+    const clamped = Math.max(EDITOR_MIN_LINES, Math.min(EDITOR_MAX_LINES, lines));
+    return clamped * EDITOR_LINE_HEIGHT + EDITOR_PADDING_V * 2;
+  }
+
+  /**
+   * エディタコンテナの高さを更新し、Monaco の layout() を呼んで再描画させる。
+   * @param {HTMLElement} containerEl  .sb-editor 要素
+   * @param {object|null} monacoRef    { editor } | null
+   * @param {string}      code         現在のコード文字列
+   */
+  function updateEditorHeight(containerEl, monacoRef, code) {
+    if (!containerEl) return;
+    const h = calcEditorHeight(code);
+    containerEl.style.height = h + 'px';
+    // Monaco に新しいサイズを伝える
+    if (monacoRef && monacoRef.editor) {
+      try { monacoRef.editor.layout(); } catch (_) {}
+    }
+  }
+
   // --- helper utilities ---
   function findEmbedRootsIn(node = document) {
     const roots = [];
@@ -52,7 +85,8 @@
 
   // --- create UI per root ---
   function initCell(rootEl) {
-    let monacoInstance = null;
+    // monacoRef はオブジェクトで持つことで updateEditorHeight から参照できる
+    const monacoRef = { editor: null, model: null };
 
     if (!rootEl) return;
     const existing = rootEl.getAttribute('data-sandbox-initialized');
@@ -89,12 +123,15 @@
     `;
 
     // UI refs
-    const langSelect  = rootEl.querySelector('.sb-langSelect');
-    const runBtn      = rootEl.querySelector('.sb-runBtn');
-    const loadBtn     = rootEl.querySelector('.sb-loadBtn');
-    const execTextarea = rootEl.querySelector('.sb-execCommand');
+    const langSelect      = rootEl.querySelector('.sb-langSelect');
+    const runBtn          = rootEl.querySelector('.sb-runBtn');
+    const loadBtn         = rootEl.querySelector('.sb-loadBtn');
+    const execTextarea    = rootEl.querySelector('.sb-execCommand');
     const editorContainer = rootEl.querySelector('.sb-editor');
-    const outputPre   = rootEl.querySelector('.output-area');
+    const outputPre       = rootEl.querySelector('.output-area');
+
+    // ── 初期高さをコード行数から計算して即セット ──────────────
+    updateEditorHeight(editorContainer, null, initialCode);
 
     // populate languages
     const LANG_CONFIG = window.LANG_CONFIG || {};
@@ -130,18 +167,22 @@
 
     // ---- Load Template（初期コードに戻す） ----
     loadBtn.addEventListener('click', () => {
-      if (monacoInstance && monacoInstance.model) {
-        try { monacoInstance.model.setValue(initialCode); } catch (_) {}
+      if (monacoRef.model) {
+        try {
+          monacoRef.model.setValue(initialCode);
+          updateEditorHeight(editorContainer, monacoRef, initialCode);
+        } catch (_) {}
       } else {
         editorContainer.textContent = initialCode;
+        updateEditorHeight(editorContainer, null, initialCode);
       }
     });
 
     // ---- Run ----
     runBtn.addEventListener('click', () => {
       let code = '';
-      if (monacoInstance && monacoInstance.model) {
-        try { code = monacoInstance.model.getValue(); } catch (_) {}
+      if (monacoRef.model) {
+        try { code = monacoRef.model.getValue(); } catch (_) {}
       }
       if (!code) code = editorContainer.textContent || '';
 
@@ -165,17 +206,28 @@
     // ---- Monaco loader ----
     tryLoadMonaco(editorContainer, initialCode, curLang)
       .then(res => {
-        monacoInstance = res;
+        monacoRef.editor = res.editor;
+        monacoRef.model  = res.model;
+
+        // 初期値をセット
         try {
-          if (monacoInstance && monacoInstance.model) {
-            const val = initialCode
-              || (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].templatecode)
-              || '';
-            monacoInstance.model.setValue(val);
-          }
+          const val = initialCode
+            || (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].templatecode)
+            || '';
+          monacoRef.model.setValue(val);
+          // Monaco 描画後に再度高さ調整
+          updateEditorHeight(editorContainer, monacoRef, val);
         } catch (e) {
           console.warn('[sandbox_init] failed to set model value:', e);
         }
+
+        // ── コンテンツ変更時に高さをリアルタイム更新 ──────────
+        monacoRef.model.onDidChangeContent(() => {
+          try {
+            const code = monacoRef.model.getValue();
+            updateEditorHeight(editorContainer, monacoRef, code);
+          } catch (_) {}
+        });
       })
       .catch(e => {
         console.warn('[sandbox_init] Monaco load failed (non-fatal):', e);
@@ -193,19 +245,24 @@
         const model = mon.editor.createModel(code || '', monLang);
         const editor = mon.editor.create(containerEl, {
           model,
-          automaticLayout: true,   // コンテナリサイズに追従
+          automaticLayout: true,
           theme: 'vs-dark',
           fontSize: 13,
+          lineHeight: 20,
           lineNumbers: 'on',
-          minimap: { enabled: false },   // ミニマップ非表示でスクロール余白を減らす
-          scrollBeyondLastLine: false,    // ← 最終行以降の余分スクロールを無効化
-          overviewRulerLanes: 0,          // 右端の概観ルーラーを非表示
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          overviewRulerLanes: 0,
           scrollbar: {
-            verticalScrollbarSize: 8,
-            horizontalScrollbarSize: 8,
-            alwaysConsumeMouseWheel: false, // 外側へのホイール伝播を許可
+            verticalScrollbarSize: 6,
+            horizontalScrollbarSize: 6,
+            alwaysConsumeMouseWheel: false,
+            // 高さが可変なのでスクロールバーを非表示にする
+            vertical: 'hidden',
           },
           padding: { top: 8, bottom: 8 },
+          // コンテナ高さ = コード行数なのでスクロールなしで全行表示できる
+          wordWrap: 'on',
         });
         return { mon, model, editor };
       }
@@ -289,7 +346,6 @@
   window.addEventListener('message', (ev) => {
     const msg = ev.data || {};
 
-    // run 完了後にボタンを復帰させる
     function restoreRunBtn(index) {
       const root = document.getElementById(`sandbox-root-${index}`)
         || document.querySelector(`[data-index="${index}"]`);
