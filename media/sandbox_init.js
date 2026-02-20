@@ -14,7 +14,6 @@
           window.__vscodeApi = api;
           return api;
         } catch (e) {
-          // 競合している場合などに備える
           return window.__vscodeApi || null;
         }
       }
@@ -25,7 +24,7 @@
 
   // --- internal storage ---
   const cells = new Map();
-  window.__sandbox_cells = cells; // for debug
+  window.__sandbox_cells = cells;
 
   // --- helper utilities ---
   function findEmbedRootsIn(node = document) {
@@ -33,7 +32,6 @@
     const single = node.getElementById ? node.getElementById("sandbox-root") : null;
     if (single) roots.push(single);
 
-    // id pattern sandbox-root-N
     const idMatches = node.querySelectorAll ? node.querySelectorAll('[id]') : [];
     idMatches.forEach(el => {
       if (el.id && /^sandbox-root(-\d+)?$/.test(el.id) || /^sandbox-root-\d+$/.test(el.id)) {
@@ -41,7 +39,6 @@
       }
     });
 
-    // class .sandbox-embed
     const classRoots = node.querySelectorAll ? node.querySelectorAll('.sandbox-embed') : [];
     classRoots.forEach(el => { if (!roots.includes(el)) roots.push(el); });
 
@@ -53,9 +50,8 @@
     try { return decodeURIComponent(raw); } catch (e) { return raw; }
   }
 
-  // --- create simple UI per root (keeps minimal, uses Monaco if available later) ---
+  // --- create UI per root ---
   function initCell(rootEl) {
-
     let monacoInstance = null;
 
     if (!rootEl) return;
@@ -63,103 +59,119 @@
     if (existing === '1') return;
 
     const index = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
-
-    // mark initialized
     rootEl.setAttribute('data-sandbox-initialized', '1');
 
     const initialRaw = rootEl.getAttribute('data-initial-code') || '';
     const initialCode = decodeInitialCode(initialRaw);
 
-    // build minimal skeleton (Monaco loader can later replace the editor area)
+    // ---- UI skeleton ----
     rootEl.innerHTML = `
       <div class="sandbox-ui" data-index="${index}">
+
         <div class="sandbox-toolbar">
           <select class="sb-langSelect"></select>
-          <button class="sb-runBtn">Run</button>
-          <button class="sb-loadBtn">Load Template</button>
+          <button class="sb-runBtn">▶ Run</button>
+          <button class="sb-loadBtn">↺ Load Template</button>
         </div>
+
         <div class="sb-cmd-area">
-          <textarea class="sb-execCommand" placeholder="実行コマンド ({file})"></textarea>
+          <textarea class="sb-execCommand" placeholder="実行コマンド（{file} にファイルパスが展開されます）"></textarea>
         </div>
-        <div class="sb-editor" style="height:260px;"></div>
-        <div class="sb-output"><div class="output-header">Output</div><pre class="output-area"></pre></div>
+
+        <div class="sb-editor"></div>
+
+        <div class="sb-output">
+          <div class="output-header">Output</div>
+          <pre class="output-area"></pre>
+        </div>
+
       </div>
     `;
 
-    // fill UI references
-    const langSelect = rootEl.querySelector('.sb-langSelect');
-    const runBtn = rootEl.querySelector('.sb-runBtn');
-    const loadBtn = rootEl.querySelector('.sb-loadBtn');
+    // UI refs
+    const langSelect  = rootEl.querySelector('.sb-langSelect');
+    const runBtn      = rootEl.querySelector('.sb-runBtn');
+    const loadBtn     = rootEl.querySelector('.sb-loadBtn');
     const execTextarea = rootEl.querySelector('.sb-execCommand');
     const editorContainer = rootEl.querySelector('.sb-editor');
-    const outputPre = rootEl.querySelector('.output-area');
+    const outputPre   = rootEl.querySelector('.output-area');
 
-    // populate languages from window.LANG_CONFIG
+    // populate languages
     const LANG_CONFIG = window.LANG_CONFIG || {};
     const langs = Object.keys(LANG_CONFIG).length ? Object.keys(LANG_CONFIG) : ['javascript'];
     langSelect.innerHTML = '';
     langs.forEach(l => {
-      const o = document.createElement('option'); o.value = l; o.textContent = l; langSelect.appendChild(o);
+      const o = document.createElement('option');
+      o.value = l; o.textContent = l;
+      langSelect.appendChild(o);
     });
     const curLang = langSelect.value || langs[0];
-    execTextarea.value = (window.LANG_CONFIG && window.LANG_CONFIG[curLang] && window.LANG_CONFIG[curLang].command) || '';
+    execTextarea.value = (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].command) || '';
 
-    // create minimal text model (no Monaco required for now)
+    // 言語切り替え時にコマンドも更新
+    langSelect.addEventListener('change', () => {
+      const selected = langSelect.value;
+      execTextarea.value = (LANG_CONFIG[selected] && LANG_CONFIG[selected].command) || '';
+    });
+
+    // cell object
     const cellObj = {
       rootEl,
       index: String(index),
       outputEl: outputPre,
-      append(s) { if (outputPre) { outputPre.textContent += String(s); outputPre.scrollTop = outputPre.scrollHeight; } }
+      append(s) {
+        if (outputPre) {
+          outputPre.textContent += String(s);
+          outputPre.scrollTop = outputPre.scrollHeight;
+        }
+      }
     };
     cells.set(String(index), cellObj);
 
-    // load template handler
+    // ---- Load Template（初期コードに戻す） ----
     loadBtn.addEventListener('click', () => {
-      const conf = (window.LANG_CONFIG && window.LANG_CONFIG[langSelect.value]) || {};
-      const tmpl = conf.templatecode || '';
-      // if Monaco present and editor model available we would set model; otherwise replace editorContainer text
-      editorContainer.textContent = tmpl;
+      if (monacoInstance && monacoInstance.model) {
+        try { monacoInstance.model.setValue(initialCode); } catch (_) {}
+      } else {
+        editorContainer.textContent = initialCode;
+      }
     });
 
-    // Run handler
-    runBtn.addEventListener("click", () => {
-      // Run ボタン押下部分の直前に追加（既にある runBtn.addEventListener の中）
-      let code = "";
-
+    // ---- Run ----
+    runBtn.addEventListener('click', () => {
+      let code = '';
       if (monacoInstance && monacoInstance.model) {
-        code = monacoInstance.model.getValue();
-      } else {
-        code = editorContainer.textContent || "";
+        try { code = monacoInstance.model.getValue(); } catch (_) {}
       }
+      if (!code) code = editorContainer.textContent || '';
 
-      const execCommand = execTextarea ? execTextarea.value : "";
+      const execCommand = execTextarea ? execTextarea.value : '';
 
-      if (outputPre) outputPre.textContent = "";
+      if (outputPre) outputPre.textContent = '';
+
+      runBtn.disabled = true;
+      runBtn.textContent = '… Running';
 
       const payload = {
-        command: "run",
+        command: 'run',
         language: langSelect.value,
         code,
         execCommand,
         index
       };
-
-      if (vscodeApi) {
-        vscodeApi.postMessage(payload);
-      }
+      if (vscodeApi) vscodeApi.postMessage(payload);
     });
 
-    // attempt to load Monaco editor for nicer UI non-blocking (if allowed)
-    // (we don't block if Monaco fails — skeleton UI is usable)
-    // 既存: tryLoadMonaco(editorContainer, initialCode, curLang).catch(...);
+    // ---- Monaco loader ----
     tryLoadMonaco(editorContainer, initialCode, curLang)
       .then(res => {
-        // res: { mon, model, editor }
         monacoInstance = res;
-        // もし初期コードを editorContainer に入れていた場合は model に反映する
         try {
-          if (monacoInstance && monacoInstance.model && typeof monacoInstance.model.setValue === 'function') {
-            monacoInstance.model.setValue(initialCode || (window.LANG_CONFIG && window.LANG_CONFIG[curLang] && window.LANG_CONFIG[curLang].templatecode) || '');
+          if (monacoInstance && monacoInstance.model) {
+            const val = initialCode
+              || (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].templatecode)
+              || '';
+            monacoInstance.model.setValue(val);
           }
         } catch (e) {
           console.warn('[sandbox_init] failed to set model value:', e);
@@ -170,29 +182,47 @@
       });
   }
 
-  // try to load monaco non-blocking; resolves if loaded, rejects otherwise
+  // Monaco loader — overflow:hidden コンテナでも正しくレイアウトされるよう
+  // automaticLayout: true にしてリサイズ対応
   function tryLoadMonaco(containerEl, code, lang) {
     return new Promise((resolve, reject) => {
       if (!containerEl) return reject(new Error('no container'));
-      if (window.monaco) {
-        // create model & editor
-        const mon = window.monaco;
-        const monLang = (lang === 'typescript') ? 'typescript' : 'javascript';
+
+      function createEditor(mon) {
+        const monLang = lang === 'typescript' ? 'typescript' : 'javascript';
         const model = mon.editor.createModel(code || '', monLang);
-        const editor = mon.editor.create(containerEl, { model, automaticLayout: true, theme: 'vs-dark' });
-        return resolve({ mon, model, editor });
+        const editor = mon.editor.create(containerEl, {
+          model,
+          automaticLayout: true,   // コンテナリサイズに追従
+          theme: 'vs-dark',
+          fontSize: 13,
+          lineNumbers: 'on',
+          minimap: { enabled: false },   // ミニマップ非表示でスクロール余白を減らす
+          scrollBeyondLastLine: false,    // ← 最終行以降の余分スクロールを無効化
+          overviewRulerLanes: 0,          // 右端の概観ルーラーを非表示
+          scrollbar: {
+            verticalScrollbarSize: 8,
+            horizontalScrollbarSize: 8,
+            alwaysConsumeMouseWheel: false, // 外側へのホイール伝播を許可
+          },
+          padding: { top: 8, bottom: 8 },
+        });
+        return { mon, model, editor };
       }
-      // load require.js once
+
+      if (window.monaco) {
+        return resolve(createEditor(window.monaco));
+      }
+
       if (document.querySelector('script[data-monaco-loader]')) {
-        // wait for monaco
         let tries = 0;
         const wait = setInterval(() => {
-          if (window.monaco) { clearInterval(wait); tryLoadMonaco(containerEl, code, lang).then(resolve).catch(reject); }
+          if (window.monaco) { clearInterval(wait); resolve(createEditor(window.monaco)); }
           if (++tries > 50) { clearInterval(wait); reject(new Error('monaco timeout')); }
         }, 200);
         return;
       }
-      // insert loader
+
       const s = document.createElement('script');
       s.src = 'https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js';
       s.setAttribute('data-monaco-loader', '1');
@@ -200,18 +230,17 @@
         const base = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.39.0/min';
         try {
           window.require.config({ paths: { vs: base + '/vs' } });
-          window.MonacoEnvironment = { getWorkerUrl() {
-            const proxy = URL.createObjectURL(new Blob([`self.MonacoEnvironment={baseUrl:'${base}'};importScripts('${base}/vs/base/worker/workerMain.js');`], { type: 'text/javascript' }));
-            return proxy;
-          } };
+          window.MonacoEnvironment = {
+            getWorkerUrl() {
+              const blob = new Blob(
+                [`self.MonacoEnvironment={baseUrl:'${base}'};importScripts('${base}/vs/base/worker/workerMain.js');`],
+                { type: 'text/javascript' }
+              );
+              return URL.createObjectURL(blob);
+            }
+          };
           window.require(['vs/editor/editor.main'], () => {
-            try {
-              const mon = window.monaco;
-              const monLang = (lang === 'typescript') ? 'typescript' : 'javascript';
-              const model = mon.editor.createModel(code || '', monLang);
-              const editor = mon.editor.create(containerEl, { model, automaticLayout: true, theme: 'vs-dark' });
-              resolve({ mon, model, editor });
-            } catch (e) { reject(e); }
+            try { resolve(createEditor(window.monaco)); } catch (e) { reject(e); }
           }, reject);
         } catch (e) { reject(e); }
       };
@@ -220,7 +249,7 @@
     });
   }
 
-  // --- initialization logic: try immediate, otherwise observe DOM mutations ---
+  // --- initialization ---
   function initExistingRoots() {
     const roots = findEmbedRootsIn(document);
     if (!roots || roots.length === 0) return false;
@@ -228,67 +257,69 @@
     return true;
   }
 
-  // expose manual init
-  window.__sandbox_init = function() {
+  window.__sandbox_init = function () {
     try {
       const ok = initExistingRoots();
-      if (!ok) {
-        // attempt to find anywhere in document again
-        const roots = findEmbedRootsIn(document);
-        roots.forEach(r => initCell(r));
-      }
+      if (!ok) findEmbedRootsIn(document).forEach(r => initCell(r));
       return true;
     } catch (e) { console.warn('manual __sandbox_init failed', e); return false; }
   };
 
-  // auto init now
   const didInit = initExistingRoots();
 
-  // If not initialized, set up MutationObserver to watch for elements being added
   if (!didInit && typeof MutationObserver !== 'undefined') {
     const observer = new MutationObserver((mutations) => {
       for (const m of mutations) {
         for (const node of m.addedNodes) {
           if (!(node instanceof HTMLElement)) continue;
-          // if the added node itself is a root or contains root(s)
-          if (node.matches && (node.matches('#sandbox-root') || node.matches('[id^="sandbox-root"]') || node.classList.contains('sandbox-embed'))) {
-            initCell(node);
-          }
-          // also scan descendants
-          const found = findEmbedRootsIn(node);
-          found.forEach(r => initCell(r));
+          if (node.matches && (
+            node.matches('#sandbox-root') ||
+            node.matches('[id^="sandbox-root"]') ||
+            node.classList.contains('sandbox-embed')
+          )) { initCell(node); }
+          findEmbedRootsIn(node).forEach(r => initCell(r));
         }
       }
     });
     observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-
-    // also safety timer: try manual init after short delay in case elements are inserted asynchronously
     setTimeout(() => { try { window.__sandbox_init(); } catch (e) {} }, 500);
   }
 
-  // message routing from extension
+  // ---- メッセージルーティング（extension → webview） ----
   window.addEventListener('message', (ev) => {
     const msg = ev.data || {};
+
+    // run 完了後にボタンを復帰させる
+    function restoreRunBtn(index) {
+      const root = document.getElementById(`sandbox-root-${index}`)
+        || document.querySelector(`[data-index="${index}"]`);
+      if (!root) return;
+      const btn = root.querySelector('.sb-runBtn');
+      if (btn) { btn.disabled = false; btn.textContent = '▶ Run'; }
+    }
+
     if (msg.command === 'result' && typeof msg.index !== 'undefined') {
       const index = String(msg.index);
       const c = cells.get(index);
       if (c && c.append) c.append(msg.output || '');
       else {
-        // fallback: try element with id
         const fallback = document.getElementById(`sandbox-root-${index}`);
         if (fallback) {
           const out = fallback.querySelector('.output-area');
           if (out) out.textContent = (out.textContent || '') + (msg.output || '');
         }
       }
+      restoreRunBtn(msg.index);
       return;
     }
-    if (msg.kind === 'stream' && msg.stdout) {
-      cells.forEach(c => c.append(msg.stdout));
+    if (msg.kind === 'stream') {
+      if (msg.stdout) cells.forEach(c => c.append(msg.stdout));
+      if (msg.stderr) cells.forEach(c => c.append(msg.stderr));
       return;
     }
     if (msg.kind === 'exit') {
       cells.forEach(c => c.append(`\n[process exited, code=${msg.code}, signal=${msg.signal}]\n`));
+      cells.forEach((c, idx) => restoreRunBtn(idx));
       return;
     }
     if (msg.kind === 'status') {
@@ -297,9 +328,9 @@
     }
     if (msg.kind === 'error' && msg.text) {
       cells.forEach(c => c.append(`[error] ${msg.text}\n`));
+      cells.forEach((c, idx) => restoreRunBtn(idx));
       return;
     }
   });
 
-  // finished
 })();
