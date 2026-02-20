@@ -5,7 +5,7 @@ import { DocMateWebviewProvider } from './views/webviewProvider';
 export function activate(context: vscode.ExtensionContext) {
 	console.log('DocMate is now active!');
 
-	const controller = new DocMateController();
+	const controller = new DocMateController(context.extensionPath);
 
 	let disposable = vscode.commands.registerCommand('docmate.explain', async () => {
 		const editor = vscode.window.activeTextEditor;
@@ -63,7 +63,7 @@ export function activate(context: vscode.ExtensionContext) {
 								panel,
 							});
 							// ストリーム結果は runCommand 内で panel へ直接送信済み。
-							// // 完了通知が必要な場合はここで追加送信できる。
+							// 完了通知が必要な場合はここで追加送信できる。
 						}
 					},
 					undefined,

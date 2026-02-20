@@ -1,4 +1,3 @@
-
 import * as vscode from 'vscode';
 import { DocService } from '../services/docService';
 import { GeminiService } from '../services/geminiService';
@@ -9,10 +8,10 @@ export class DocMateController {
     private geminiService: GeminiService;
     private executionService: ExecutionService;
 
-    constructor() {
+    constructor(extensionPath: string) {
         this.docService = new DocService();
         this.geminiService = new GeminiService();
-        this.executionService = new ExecutionService();
+        this.executionService = new ExecutionService(extensionPath);
     }
 
     async explain(
