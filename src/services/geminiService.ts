@@ -2,8 +2,6 @@
 import * as vscode from 'vscode';
 import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import { GenerateUUIDService } from './generateUUIDService';
-import { PROXY_URL } from '../settings/config';
-
 
 export interface Example {
     title: string;
@@ -188,7 +186,14 @@ Do not include markdown code fences in the output, just raw JSON.
                 'x-client-id': clientID
             };
 
-            const res = await fetch(PROXY_URL, {
+            // プロキシサーバーのエンドポイントを読み込む
+            const proxyUrl = process.env.PROXY_URL;
+            console.log(proxyUrl);
+            if(!proxyUrl){
+                throw new Error("PROXY_*URL is not defined");
+            }
+
+            const res = await fetch(proxyUrl, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify({ prompt: prompt })
