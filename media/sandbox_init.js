@@ -28,8 +28,8 @@
 
   // ── エディタ高さ計算ユーティリティ ──────────────────────────
   //  CSS の --md-editor-* トークンと合わせる
-  const EDITOR_LINE_HEIGHT = 21;   // px  (monaco fontSize:13 + 余白)
-  const EDITOR_PADDING_V   = 8;    // px  (上下パディング合計の半分)
+  const EDITOR_LINE_HEIGHT = 24;   // px  (monaco fontSize:13 + 余白)
+  const EDITOR_PADDING_V   = 6;    // px  (上下パディング合計の半分)
   const EDITOR_MIN_LINES   = 4;
   const EDITOR_MAX_LINES   = 30;
 
@@ -232,6 +232,8 @@
       .catch(e => {
         console.warn('[sandbox_init] Monaco load failed (non-fatal):', e);
       });
+    // ── ヘッダークリックでモーダルを開くリスナーを登録 ──
+    attachHeaderClickListener(rootEl);
   }
 
   // Monaco loader — overflow:hidden コンテナでも正しくレイアウトされるよう
@@ -340,6 +342,117 @@
     });
     observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
     setTimeout(() => { try { window.__sandbox_init(); } catch (e) {} }, 500);
+  }
+
+  // ── モーダルシステム ────────────────────────────────────────
+  //
+  // .example-header クリック → モーダルを開く
+  // モーダル内に新規サンドボックスを初期化し、元セルのコードを引き継ぐ
+  // オーバーレイクリック / Esc / 閉じるボタン → モーダルを閉じる
+  // -------------------------------------------------------
+
+  /** モーダルオーバーレイ DOM（1つだけ生成して使い回す） */
+  let modalOverlay = null;
+  let modalCard    = null;
+
+  function ensureModal() {
+    if (modalOverlay) return;
+
+    modalOverlay = document.createElement('div');
+    modalOverlay.className = 'dm-modal-overlay';
+
+    modalCard = document.createElement('div');
+    modalCard.className = 'dm-modal-card';
+
+    modalOverlay.appendChild(modalCard);
+    document.body.appendChild(modalOverlay);
+
+    // オーバーレイ（カード外）クリックで閉じる
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+
+    // Esc キーで閉じる
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+  }
+
+  function openModal(sourceRoot) {
+    ensureModal();
+
+    // 元セルからタイトル・説明・初期コードを取得
+    const cell     = sourceRoot.closest('.example-cell');
+    const titleEl  = cell ? cell.querySelector('.example-header strong')      : null;
+    const descEl   = cell ? cell.querySelector('.example-header .description') : null;
+    const title    = titleEl ? titleEl.textContent : '';
+    const desc     = descEl  ? descEl.textContent  : '';
+    const initialRaw = sourceRoot.getAttribute('data-initial-code') || '';
+    const srcIndex   = sourceRoot.getAttribute('data-index') || '0';
+    const modalIndex = `modal-${srcIndex}`;
+
+    // カード内 HTML を構築
+    modalCard.innerHTML = `
+      <div class="dm-modal-header">
+        <div class="dm-modal-header-text">
+          <strong>${title}</strong>
+          ${desc ? `<div class="description">${desc}</div>` : ''}
+        </div>
+        <button class="dm-modal-close" title="閉じる">&#x2715;</button>
+      </div>
+      <div
+        id="sandbox-root-${modalIndex}"
+        class="sandbox-embed"
+        data-initial-code="${initialRaw}"
+        data-index="${modalIndex}"
+      ></div>
+    `;
+
+    // 閉じるボタン
+    modalCard.querySelector('.dm-modal-close').addEventListener('click', closeModal);
+
+    // モーダルを表示してからサンドボックスを初期化
+    modalOverlay.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+
+    // 少し遅延させて DOM が確定してから初期化
+    requestAnimationFrame(() => {
+      const newRoot = document.getElementById(`sandbox-root-${modalIndex}`);
+      if (newRoot) initCell(newRoot);
+    });
+  }
+
+  function closeModal() {
+    if (!modalOverlay) return;
+    modalOverlay.classList.remove('is-open');
+    document.body.style.overflow = '';
+
+    // モーダル内の Monaco インスタンスをクリーンアップ（メモリリーク防止）
+    if (modalCard) {
+      const idx = (() => {
+        const el = modalCard.querySelector('[data-index]');
+        return el ? el.getAttribute('data-index') : null;
+      })();
+      if (idx) cells.delete(String(idx));
+      try {
+        if (window.monaco) {
+          window.monaco.editor.getModels().forEach(m => {
+            if (m.uri.toString().includes('modal')) m.dispose();
+          });
+        }
+      } catch (_) {}
+      modalCard.innerHTML = '';
+    }
+  }
+
+  /** .example-header へのクリックリスナーを登録（initCell 完了後に呼ぶ） */
+  function attachHeaderClickListener(rootEl) {
+    const cell   = rootEl.closest('.example-cell');
+    if (!cell) return;
+    const header = cell.querySelector('.example-header');
+    if (!header || header.dataset.dmModal) return;
+    header.dataset.dmModal = '1';
+    header.addEventListener('click', () => openModal(rootEl));
   }
 
   // ---- メッセージルーティング（extension → webview） ----
