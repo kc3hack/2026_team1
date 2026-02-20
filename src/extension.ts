@@ -1,12 +1,16 @@
 
 import * as vscode from 'vscode';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
 import { DocMateController } from './controllers/docMateController';
 import { DocMateWebviewProvider } from './views/webviewProvider';
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('DocMate is now active!');
-
-	const controller = new DocMateController();
+	dotenv.config({
+		path: path.join(context.extensionPath, '.env'),
+	});
+	const controller = new DocMateController(context);
 
 	let disposable = vscode.commands.registerCommand('docmate.explain', async () => {
 		const editor = vscode.window.activeTextEditor;
