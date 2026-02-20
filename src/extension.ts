@@ -1,4 +1,3 @@
-
 import * as vscode from 'vscode';
 import { DocMateController } from './controllers/docMateController';
 import { DocMateWebviewProvider } from './views/webviewProvider';
@@ -55,15 +54,16 @@ export function activate(context: vscode.ExtensionContext) {
 				// Handle messages from Webview
 				panel.webview.onDidReceiveMessage(
 					async (message) => {
-						switch (message.command) {
-							case 'run':
-								const output = await controller.runCode(message.code);
-								panel.webview.postMessage({
-									command: 'result',
-									index: message.index,
-									output: output
-								});
-								break;
+						if (message.command === 'run') {
+							// sandbox_init.js が送る payload:
+							//   { command, language, code, execCommand, index }
+							await controller.runCode(message.code, {
+								language: message.language,
+								execCommand: message.execCommand,
+								panel,
+							});
+							// ストリーム結果は runCommand 内で panel へ直接送信済み。
+							// // 完了通知が必要な場合はここで追加送信できる。
 						}
 					},
 					undefined,

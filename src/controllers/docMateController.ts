@@ -8,7 +8,6 @@ export class DocMateController {
     private docService: DocService;
     private geminiService: GeminiService;
     private executionService: ExecutionService;
-    private maxRetries = 5;
 
     constructor() {
         this.docService = new DocService();
@@ -16,8 +15,14 @@ export class DocMateController {
         this.executionService = new ExecutionService();
     }
 
-
-    async explain(keyword: string, progress: vscode.Progress<{ message?: string; increment?: number }>): Promise<{ summary: string; examples: { title: string; description: string; code: string; executionOutput: string }[]; url: string }> {
+    async explain(
+        keyword: string,
+        progress: vscode.Progress<{ message?: string; increment?: number }>
+    ): Promise<{
+        summary: string;
+        examples: { title: string; description: string; code: string; executionOutput: string }[];
+        url: string;
+    }> {
         // 1. Search
         progress.report({ message: `Searching MDN for "${keyword}"...` });
         const searchResult = await this.docService.search(keyword);
@@ -31,21 +36,19 @@ export class DocMateController {
 
         // 3. Summarize & Generate Code
         progress.report({ message: `Summarizing and generating code with Gemini...` });
-        let geminiResponse = await this.geminiService.summarize(markdown);
+        const geminiResponse = await this.geminiService.summarize(markdown);
 
         // 4. Initial Execution (Best Effort)
         progress.report({ message: `Executing sample codes...` });
 
         const examplesWithOutput = [];
         for (const example of geminiResponse.examples) {
-            // Execute each example
-            // We do NOT use the auto-fix loop here for stability and speed.
-            // Interaction allows user to fix it themselves.
             const executionResult = await this.executionService.execute(example.code);
-
             examplesWithOutput.push({
                 ...example,
-                executionOutput: executionResult.success ? executionResult.output : `Execution failed: ${executionResult.error}`
+                executionOutput: executionResult.success
+                    ? executionResult.output
+                    : `Execution failed: ${executionResult.error}`
             });
         }
 
@@ -56,8 +59,25 @@ export class DocMateController {
         };
     }
 
-    async runCode(code: string): Promise<string> {
-        const result = await this.executionService.execute(code);
+    /**
+     * Webview の "run" メッセージに対応して任意のコードを実行する。
+     * - language:    sandbox の言語セレクト値
+     * - execCommand: sandbox の execCommand textarea の値
+     * - panel:       ストリーム結果を Webview へ送るためのパネル
+     */
+    async runCode(
+        code: string,
+        opts?: {
+            language?: string;
+            execCommand?: string;
+            panel?: vscode.WebviewPanel;
+        }
+    ): Promise<string> {
+        const result = await this.executionService.execute(code, {
+            lang: opts?.language ?? 'javascript',
+            userExecCommand: opts?.execCommand ?? '',
+            panel: opts?.panel,
+        });
         return result.success ? result.output : `Execution failed: ${result.error}`;
     }
 }
