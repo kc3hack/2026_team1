@@ -169,8 +169,30 @@ Do not include markdown code fences in the output, just raw JSON.
             responseText = result.response.text();
         }
         // Clean up potentially fenced JSON
-        const cleanJson = responseText.replace(/```json\n?|\n?```/g, '').trim();
-        return JSON.parse(cleanJson) as GeminiResponse;
+        const originalCleanJson = responseText.replace(/```json\n?|\n?```/g, '').trim();
+        let cleanJson = originalCleanJson;
+
+        try {
+            return JSON.parse(cleanJson) as GeminiResponse;
+        } catch (e) {
+            console.warn('JSON parsing failed. Attempting to sanitize invalid escape sequences...', e);
+
+            // 1. バックスラッシュのエラー救済 ( \0 や \x などを \\0 や \\x にエスケープ)
+            cleanJson = cleanJson.replace(/\\([^"\\\/bfnrtu])/g, '\\\\$1');
+            // AIがJSONの中で文字列を '" +\n "' で分割してしまった場合の救済 (前後にエスケーブされた引用符があるパターンにも対応)
+            cleanJson = cleanJson.replace(/(?<!\\)"\s*\+\s*\n?\s*"/g, '');
+
+
+            try {
+                return JSON.parse(cleanJson) as GeminiResponse;
+            } catch (fallbackError) {
+                console.error("Failed to parse Gemini JSON. True raw string:");
+                console.error("=======================");
+                console.error(originalCleanJson);
+                console.error("=======================");
+                throw fallbackError;
+            }
+        }
     }
 
     /**
