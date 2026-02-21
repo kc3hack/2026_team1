@@ -85,22 +85,22 @@ ${markdown}
         }
     }
 
-    async fixCode(originalCode: string, error: string): Promise<GeminiResponse> {
+    async fixCode(originalCode: string, error: string, language: string = 'javascript'): Promise<GeminiResponse> {
 
 
         const prompt = `
 You are a helpful coding assistant.
-The following JavaScript/TypeScript code failed to execute:
+The following ${language} code failed to execute:
 
 Code:
-\`\`\`javascript
+\`\`\`${language}
 ${originalCode}
 \`\`\`
 
 Error:
 ${error}
 
-Please fix the code so it runs correctly in a Node.js environment.
+Please fix the code so it runs correctly without errors.
 1. Provide a concise summary of the fix.
 2. Provide the complete fixed code.
 
