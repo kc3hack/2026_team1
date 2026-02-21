@@ -9,7 +9,7 @@ functions.setGlobalOptions({
 admin.initializeApp();
 const db = admin.firestore();
 
-const MAX_REQUESTS_PER_IP = 5;
+const MAX_REQUESTS_PER_IP = parseInt(process.env.MAX_REQUEST_LIMIT || "5", 10);
 
 export const geminiProxy = functions.https.onRequest(async(req,res) => {
 
