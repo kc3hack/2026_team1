@@ -81,7 +81,42 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 	});
 
+	let generateDocDisposable = vscode.commands.registerCommand('docmate.generateProjectDoc', async () => {
+		try {
+			// プログレス表示（生成完了で自動的に消える）
+			await vscode.window.withProgress({
+				location: vscode.ProgressLocation.Notification,
+				title: 'DocMate: プロジェクトドキュメント処理中...',
+				cancellable: false
+			}, async () => {
+				await controller.generateProjectDocument();
+			});
+
+			// 完了通知にダウンロードの確認を表示（プログレスは既に消えている）
+			const action = await vscode.window.showInformationMessage(
+				'DocMate: ドキュメントの準備が完了しました！ダウンロードしますか？',
+				'はい', 'いいえ'
+			);
+			if (action === 'はい') {
+				await controller.downloadProjectDocument();
+			}
+		} catch (error) {
+			vscode.window.showErrorMessage(`DocMate Error: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	});
+
+	// ダウンロードコマンド（単独でも実行可能）
+	let downloadDocDisposable = vscode.commands.registerCommand('docmate.downloadProjectDoc', async () => {
+		try {
+			await controller.downloadProjectDocument();
+		} catch (error) {
+			vscode.window.showErrorMessage(`DocMate Error: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	});
+
 	context.subscriptions.push(disposable);
+	context.subscriptions.push(generateDocDisposable);
+	context.subscriptions.push(downloadDocDisposable);
 }
 
 export function deactivate() { }
