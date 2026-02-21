@@ -1,0 +1,20 @@
+<div class="example-cell" id="example-cell-{{INDEX}}">
+
+  <div class="example-header">
+    <div class="example-header-text">
+      <strong>{{TITLE}}</strong>
+      <div class="description">{{DESCRIPTION}}</div>
+    </div>
+  </div>
+
+  <!-- Sandbox の埋め込み先。
+       data-initial-code に encodeURIComponent 済みのコードを渡す。
+       data-index で sandbox_init.js がセルを識別する。 -->
+  <div
+    id="sandbox-root-{{INDEX}}"
+    class="sandbox-embed"
+    data-initial-code="{{ENCODED_CODE}}"
+    data-index="{{INDEX}}"
+  ></div>
+
+</div>

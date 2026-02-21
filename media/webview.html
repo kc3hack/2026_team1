@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none';
+                 font-src https://fonts.gstatic.com;
+                 style-src  {{CSP_SOURCE}} 'unsafe-inline' https://fonts.googleapis.com;
+                 script-src {{CSP_SOURCE}} 'nonce-{{NONCE}}' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
+                 connect-src https://cdn.jsdelivr.net;
+                 worker-src  blob:;">
+  <title>DocMate</title>
+  <link rel="stylesheet" href="{{STYLE_URI}}">
+</head>
+<body>
+
+  <!-- ── 要約セクション ── -->
+  <div class="section">
+    <h2>要約 (Summary)</h2>
+    <div>{{SUMMARY_HTML}}</div>
+    <p><a href="{{DOC_URL}}">Original Documentation (MDN)</a></p>
+  </div>
+
+  <!-- ── サンプルコードセクション ── -->
+  <div class="section">
+    <h2>サンプルコード (Interactive Examples)</h2>
+    {{EXAMPLES_HTML}}
+  </div>
+
+  <!--
+    スクリプトは body 末尾に置く。
+    こうすることで DOM が確定した状態で sandbox_init.js が実行され、
+    .sandbox-embed を確実に発見できる。
+  -->
+
+  <!-- LANG_CONFIG を sandbox_init.js より先に定義する -->
+  <script nonce="{{NONCE}}">window.LANG_CONFIG = "{{LANG_CONFIG}}";</script>
+
+  <!-- サンドボックス本体 -->
+  <script nonce="{{NONCE}}" src="{{SCRIPT_URI}}"></script>
+
+  <!-- result メッセージのフォールバック互換ハンドラ -->
+  <script nonce="{{NONCE}}">
+    (function () {
+      window.addEventListener('message', function (event) {
+        var msg = event.data || {};
+        if (msg.command === 'result' && typeof msg.index !== 'undefined') {
+          var outputEl = document.getElementById('output-content-' + msg.index);
+          if (outputEl) { outputEl.textContent = msg.output || ''; }
+        }
+      });
+    })();
+  </script>
+
+</body>
+</html>
