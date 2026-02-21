@@ -25,15 +25,17 @@ export class DocMateController {
 
     async explain(
         keyword: string,
+        language: string,
         progress: vscode.Progress<{ message?: string; increment?: number }>
     ): Promise<{
         summary: string;
-        examples: { title: string; description: string; code: string; executionOutput: string }[];
+        examples: { title: string; description:
+             string; code: string; executionOutput: string }[];
         url: string;
     }> {
         // 1. Search
-        progress.report({ message: `Searching MDN for "${keyword}"...` });
-        const searchResult = await this.docService.search(keyword);
+        progress.report({ message: `Searching documentation for "${keyword}"...` });
+        const searchResult = await this.docService.search(keyword, language);
         if (!searchResult) {
             throw new Error(`No documentation found for "${keyword}"`);
         }
@@ -56,7 +58,7 @@ export class DocMateController {
 
         // 4. Summarize & Generate Code
         progress.report({ message: `Summarizing and generating code with Gemini...` });
-        const geminiResponse = await this.geminiService.summarize(markdown);
+        const geminiResponse = await this.geminiService.summarize(markdown, language);
 
         // 5. Initial Execution (Best Effort)
         progress.report({ message: `Executing sample codes...` });

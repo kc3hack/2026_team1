@@ -150,6 +150,22 @@
       o.value = l; o.textContent = l;
       langSelect.appendChild(o);
     });
+
+    // ── Map the current VSCode language to our sandbox config keys ──
+    let targetLang = window.CURRENT_LANG || langs[0];
+    const langMap = {
+      'typescriptreact': 'typescript',
+      'javascriptreact': 'javascript',
+      'vue': 'javascript'
+    };
+    targetLang = langMap[targetLang] || targetLang;
+
+    // If mapped language isn't in LANG_CONFIG, fallback to the first available
+    if (!LANG_CONFIG[targetLang]) {
+      targetLang = langs[0];
+    }
+    langSelect.value = targetLang;
+
     const curLang = langSelect.value || langs[0];
     execTextarea.value = (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].command) || '';
 
@@ -252,7 +268,8 @@
       if (!containerEl) return reject(new Error('no container'));
 
       function createEditor(mon) {
-        const monLang = lang === 'typescript' ? 'typescript' : 'javascript';
+        const supported = ['javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'go', 'php', 'ruby', 'rust', 'html', 'css', 'json', 'shell', 'dart', 'kotlin'];
+        const monLang = supported.includes(lang) ? lang : 'javascript';
         const model = mon.editor.createModel(code || '', monLang);
         const editor = mon.editor.create(containerEl, {
           model,

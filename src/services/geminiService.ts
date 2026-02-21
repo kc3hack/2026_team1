@@ -36,14 +36,14 @@ export class GeminiService {
         }
     }
 
-    async summarize(markdown: string): Promise<GeminiResponse> {
+    async summarize(markdown: string, language: string): Promise<GeminiResponse> {
 
 
         const prompt = `
 You are a helpful coding assistant.
 Read the following documentation (in Markdown) and provide:
 1. A concise summary in Japanese.
-2. Multiple runnable sample code blocks in JavaScript or TypeScript that demonstrates different usages (e.g. basic usage, edge cases, typical patterns).
+2. Multiple runnable sample code blocks in ${language} that demonstrates different usages (e.g. basic usage, edge cases, typical patterns).
    - Each code block should be self-contained.
    - Do not use external libraries unless necessary.
 
@@ -85,22 +85,22 @@ ${markdown}
         }
     }
 
-    async fixCode(originalCode: string, error: string): Promise<GeminiResponse> {
+    async fixCode(originalCode: string, error: string, language: string = 'javascript'): Promise<GeminiResponse> {
 
 
         const prompt = `
 You are a helpful coding assistant.
-The following JavaScript/TypeScript code failed to execute:
+The following ${language} code failed to execute:
 
 Code:
-\`\`\`javascript
+\`\`\`${language}
 ${originalCode}
 \`\`\`
 
 Error:
 ${error}
 
-Please fix the code so it runs correctly in a Node.js environment.
+Please fix the code so it runs correctly without errors.
 1. Provide a concise summary of the fix.
 2. Provide the complete fixed code.
 

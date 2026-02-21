@@ -53,9 +53,11 @@ export function activate(context: vscode.ExtensionContext) {
 		let disposable = vscode.commands.registerCommand('docmate.explain', async () => {
 			const editor = vscode.window.activeTextEditor;
 			let keyword = '';
+			let language = '';
 
 			if (editor) {
 				const selection = editor.selection;
+				language = editor.document.languageId;
 				keyword = editor.document.getText(selection).trim();
 			}
 
@@ -76,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
 				cancellable: false
 			}, async (progress) => {
 				try {
-					const result = await controller.explain(keyword, progress);
+					const result = await controller.explain(keyword, language, progress);
 					const panel = vscode.window.createWebviewPanel(
 						DocMateWebviewProvider.viewType,
 						`DocMate: ${keyword}`,
@@ -88,7 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
 					);
 
 					const webviewProvider = new DocMateWebviewProvider(panel, context.extensionUri, context);
-					webviewProvider.update(result.summary, result.examples, result.url);
+					webviewProvider.update(result.summary, result.examples, result.url, language);
 
 					panel.webview.onDidReceiveMessage(
 						async (message) => {
