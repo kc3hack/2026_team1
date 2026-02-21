@@ -7,8 +7,10 @@ import { ExecutionService } from '../services/executionService';
 import { GenerateUUIDService } from '../services/generateUUIDService';
 import { CacheService } from '../services/cacheService';
 import { GenerateProjectDocumentService } from '../services/generateProjectDocumentService';
+import { DocMateWebviewProvider } from '../views/webviewProvider';
 
 export class DocMateController {
+    private context: vscode.ExtensionContext;
     private docService: DocService;
     private geminiService: GeminiService;
     private executionService: ExecutionService;
@@ -20,12 +22,13 @@ export class DocMateController {
     private maxRetries = 5;
 
     constructor(context: vscode.ExtensionContext) {
+        this.context = context;
         this.docService = new DocService();
         this.generateUUIDService = new GenerateUUIDService(context);
         this.geminiService = new GeminiService(this.generateUUIDService);
         this.executionService = new ExecutionService(context.extensionPath);
         this.cacheService = new CacheService();
-        this.generateProjectDocumentService = new GenerateProjectDocumentService(context, this.geminiService);
+        this.generateProjectDocumentService = new GenerateProjectDocumentService(context, this.geminiService, this.executionService);
         this.generateProjectDocumentService.prepare();
     }
 
@@ -160,11 +163,24 @@ export class DocMateController {
 <script>
     const vscode = acquireVsCodeApi();
     document.addEventListener('click', (e) => {
+        // 「実行例を見る」リンクの処理
+        const explainLink = e.target.closest('.explain-link');
+        if (explainLink && explainLink.dataset.keyword) {
+            e.preventDefault();
+            vscode.postMessage({
+                command: 'explain',
+                keyword: explainLink.dataset.keyword,
+                summary: explainLink.dataset.summary || '',
+                examples: explainLink.dataset.examples || '[]'
+            });
+            return;
+        }
+
+        // 通常のリンク遷移
         const link = e.target.closest('a');
         if (link && link.getAttribute('href')) {
             const href = link.getAttribute('href');
-            // 外部リンクでなければ Webview 内で遷移
-            if (!href.startsWith('http://') && !href.startsWith('https://')) {
+            if (!href.startsWith('http://') && !href.startsWith('https://') && href !== '#') {
                 e.preventDefault();
                 vscode.postMessage({ command: 'navigate', url: href });
             }
@@ -196,6 +212,40 @@ export class DocMateController {
                     // タブタイトルを更新
                     panel.title = `DocMate: ${path.basename(resolvedPath, '.html')}`;
                 }
+            } else if (message.command === 'explain') {
+                // 「実行例を見る」リンクの処理 → HTMLに埋め込まれたデータを直接使用（API不要）
+                const keyword = message.keyword;
+                const summary = message.summary || '';
+                let examples = [];
+                try {
+                    examples = JSON.parse(message.examples || '[]');
+                } catch (e) {
+                    console.error('実行例データのパースに失敗:', e);
+                }
+
+                // 新しい Webview パネルで結果を表示
+                const explainPanel = vscode.window.createWebviewPanel(
+                    DocMateWebviewProvider.viewType,
+                    `DocMate: ${keyword}`,
+                    vscode.ViewColumn.Beside,
+                    {
+                        enableScripts: true,
+                        retainContextWhenHidden: true
+                    }
+                );
+                const webviewProvider = new DocMateWebviewProvider(explainPanel, this.context.extensionUri, this.context);
+                webviewProvider.update(summary, examples, '');
+
+                // コード実行メッセージを処理
+                explainPanel.webview.onDidReceiveMessage(async (msg) => {
+                    if (msg.command === 'run') {
+                        await this.runCode(msg.code, {
+                            language: msg.language,
+                            execCommand: msg.execCommand,
+                            panel: explainPanel,
+                        });
+                    }
+                });
             }
         });
     }

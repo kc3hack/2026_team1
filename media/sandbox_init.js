@@ -89,12 +89,12 @@
     `;
 
     // UI refs
-    const langSelect  = rootEl.querySelector('.sb-langSelect');
-    const runBtn      = rootEl.querySelector('.sb-runBtn');
-    const loadBtn     = rootEl.querySelector('.sb-loadBtn');
+    const langSelect = rootEl.querySelector('.sb-langSelect');
+    const runBtn = rootEl.querySelector('.sb-runBtn');
+    const loadBtn = rootEl.querySelector('.sb-loadBtn');
     const execTextarea = rootEl.querySelector('.sb-execCommand');
     const editorContainer = rootEl.querySelector('.sb-editor');
-    const outputPre   = rootEl.querySelector('.output-area');
+    const outputPre = rootEl.querySelector('.output-area');
 
     // populate languages
     const LANG_CONFIG = window.LANG_CONFIG || {};
@@ -115,10 +115,12 @@
     });
 
     // cell object
+    const preGeneratedOutput = decodeInitialCode(rootEl.getAttribute('data-execution-output') || '');
     const cellObj = {
       rootEl,
       index: String(index),
       outputEl: outputPre,
+      preGeneratedOutput, // プリ生成された実行結果を保持
       append(s) {
         if (outputPre) {
           outputPre.textContent += String(s);
@@ -128,10 +130,15 @@
     };
     cells.set(String(index), cellObj);
 
+    // プリ生成された実行結果があれば初期表示
+    if (preGeneratedOutput && outputPre) {
+      outputPre.textContent = preGeneratedOutput;
+    }
+
     // ---- Load Template（初期コードに戻す） ----
     loadBtn.addEventListener('click', () => {
       if (monacoInstance && monacoInstance.model) {
-        try { monacoInstance.model.setValue(initialCode); } catch (_) {}
+        try { monacoInstance.model.setValue(initialCode); } catch (_) { }
       } else {
         editorContainer.textContent = initialCode;
       }
@@ -141,7 +148,7 @@
     runBtn.addEventListener('click', () => {
       let code = '';
       if (monacoInstance && monacoInstance.model) {
-        try { code = monacoInstance.model.getValue(); } catch (_) {}
+        try { code = monacoInstance.model.getValue(); } catch (_) { }
       }
       if (!code) code = editorContainer.textContent || '';
 
@@ -282,7 +289,7 @@
       }
     });
     observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
-    setTimeout(() => { try { window.__sandbox_init(); } catch (e) {} }, 500);
+    setTimeout(() => { try { window.__sandbox_init(); } catch (e) { } }, 500);
   }
 
   // ---- メッセージルーティング（extension → webview） ----
@@ -318,7 +325,20 @@
       return;
     }
     if (msg.kind === 'exit') {
+      const exitCode = msg.code;
       cells.forEach(c => c.append(`\n[process exited, code=${msg.code}, signal=${msg.signal}]\n`));
+      // 実行失敗時はプリ生成された出力にフォールバック + エラーログも表示
+      if (exitCode !== 0) {
+        cells.forEach(c => {
+          if (c.preGeneratedOutput && c.outputEl) {
+            const errorLog = c.outputEl.textContent || '';
+            c.outputEl.textContent = c.preGeneratedOutput
+              + '\n\n(ℹ️ ライブ実行は失敗したため、AIによる期待出力を表示しています)'
+              + '\n\n--- エラーログ ---\n'
+              + errorLog;
+          }
+        });
+      }
       cells.forEach((c, idx) => restoreRunBtn(idx));
       return;
     }

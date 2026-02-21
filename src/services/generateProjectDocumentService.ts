@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import pLimit from 'p-limit';
 import { GeminiService } from './geminiService';
+import { ExecutionService } from './executionService';
 
 interface GeminiDocResponse {
     fileDescription: string;
@@ -14,6 +15,12 @@ interface GeminiDocResponse {
         methods: {
             name: string;
             description: string;
+            examples: {
+                title: string;
+                description: string;
+                code: string;
+                expectedOutput: string;
+            }[];
         }[];
     }[];
 }
@@ -23,15 +30,16 @@ interface TocEntry {
     fileName: string;
     description: string;
 }
-
 export class GenerateProjectDocumentService {
     context: vscode.ExtensionContext;
     geminiService: GeminiService;
+    executionService: ExecutionService;
     limit: pLimit.Limit;
 
-    constructor(context: vscode.ExtensionContext, geminiService: GeminiService) {
+    constructor(context: vscode.ExtensionContext, geminiService: GeminiService, executionService: ExecutionService) {
         this.context = context;
         this.geminiService = geminiService;
+        this.executionService = executionService;
         this.limit = pLimit(5);
     }
 
@@ -126,7 +134,44 @@ export class GenerateProjectDocumentService {
                     const params = method.getParameters();
                     if (params.length === 0) htmlBody += `<li>なし</li>`;
                     else params.forEach(p => htmlBody += `<li><span class="badge">${p.getName()}</span> : <code>${this.cleanTypeName(p.getType().getText())}</code></li>`);
-                    htmlBody += `</ul><strong>戻り値:</strong> <code>${this.cleanTypeName(method.getReturnType().getText())}</code></div>`;
+                    htmlBody += `</ul><strong>戻り値:</strong> <code>${this.cleanTypeName(method.getReturnType().getText())}</code>`;
+
+                    // 実行例データを構築（Gemini 生成 + ExecutionService 実行）
+                    const aiExamples = aiMethodInfo?.examples || [];
+                    const examplesWithOutput = [];
+
+                    // コンパイル済みJSの絶対パスを算出（src/ → out/, .ts → .js）
+                    const compiledFilePath = originalFilePath
+                        .replace(/\.ts$/, '.js')
+                        .replace(/[\\/]src[\\/]/, path.sep + 'out' + path.sep)
+                        .replace(/\\/g, '/'); // Windows パス区切りをスラッシュに統一
+
+                    // require 文を自動生成（対象クラスをインポート）
+                    const requireLine = `const { ${className} } = require('${compiledFilePath}');\n`;
+
+                    for (const ex of aiExamples) {
+                        // サンプルコードの先頭に require を自動挿入して実行
+                        const codeWithRequire = requireLine + ex.code;
+                        const execResult = await this.executionService.execute(codeWithRequire);
+
+                        // 実行成功 → 本物の出力、失敗 → Gemini の期待出力にフォールバック
+                        const output = execResult.success
+                            ? execResult.output
+                            : (ex.expectedOutput || `Execution failed: ${execResult.error}`);
+
+                        examplesWithOutput.push({
+                            title: ex.title,
+                            description: ex.description,
+                            code: codeWithRequire,
+                            executionOutput: output
+                        });
+                    }
+
+                    // data 属性に JSON を埋め込み
+                    const summary = aiMethodInfo?.description || '';
+                    const examplesJson = JSON.stringify(examplesWithOutput).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                    const summaryEscaped = summary.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                    htmlBody += `<a href="#" class="explain-link" data-keyword="${methodName}" data-examples="${examplesJson}" data-summary="${summaryEscaped}">🔍 実行例を見る</a></div>`;
                 }
                 htmlBody += `</div>`;
             }
@@ -211,8 +256,21 @@ export class GenerateProjectDocumentService {
     async askGeminiForDescriptionsInJson(fileContent: string, fileName: string, geminiService: GeminiService): Promise<GeminiDocResponse | null> {
         const prompt = `
 あなたはTypeScriptのコード解析アシスタントです。
-以下のファイルの内容を読み取り、ファイル全体、クラス、メソッドの「説明文（概要）」のみを抽出・生成してください。
+以下のファイルの内容を読み取り、ファイル全体、クラス、メソッドの「説明文（概要）」を抽出・生成してください。
 引数や戻り値の解析は不要です。自然言語による役割の説明だけに集中してください。
+
+
+また、各メソッドについて「実行例（examples）」も生成してください。
+実行例はそのメソッドの「使い方のパターン」を示すサンプルコードです。
+
+【サンプルコードの厳守ルール】
+- require()やimport文は絶対に書かないでください。モジュールの読み込みはシステムが自動で行います。
+- 対象クラスはすでにインポート済みとして、直接インスタンスを生成して使ってください。
+- 例: const service = new ClassName(); const result = await service.methodName(args);
+- console.logで結果を出力してください。
+- 非同期メソッドの場合はasync/awaitを使い、即時実行関数 (async () => { ... })(); で囲んでください。
+- 各メソッドにつき1つの実行例を生成してください。
+- 各実行例に「expectedOutput」フィールドを含めてください。これはそのサンプルコードを実行した場合にconsole.logに表示されると期待される出力テキストです。
 
 【厳守事項】
 - 返答は必ず以下のJSONフォーマットのみとし、マークダウン（\`\`\`json など）や挨拶文は一切含めないでください。
@@ -227,7 +285,15 @@ export class GenerateProjectDocumentService {
       "methods": [
         {
           "name": "メソッド名",
-          "description": "このメソッドの役割や処理内容"
+          "description": "このメソッドの役割や処理内容",
+          "examples": [
+            {
+              "title": "実行例のタイトル",
+              "description": "この実行例の説明",
+              "code": "console.log('Hello');",
+              "expectedOutput": "Hello"
+            }
+          ]
         }
       ]
     }
@@ -284,6 +350,8 @@ ${fileContent}
         .method-card { background: var(--bg); border-left: 4px solid var(--primary); padding: 1rem; margin-top: 1rem; border-radius: 0 4px 4px 0; }
         .param-list { margin: 0.5rem 0; padding-left: 1.5rem; }
         .badge { background: #e1e4e8; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.85rem; font-family: monospace; color: #d73a49; }
+        .explain-link { display: inline-block; margin-top: 0.8rem; padding: 0.4rem 0.8rem; background: var(--primary); color: white; border-radius: 4px; text-decoration: none; font-size: 0.9rem; transition: background 0.2s; }
+        .explain-link:hover { background: #005a9e; }
     </style>
 </head>
 <body>
