@@ -66,6 +66,131 @@
     }
   }
 
+  // ── iframe サンドボックス ────────────────────────────────────
+
+  /**
+   * executionType に応じて iframe に描画する srcdoc を生成する。
+   * @param {string} code  エディタ内のコード
+   * @param {string} executionType  "iframe-html" | "iframe-react" | "iframe-vue"
+   * @returns {string} srcdoc HTML 文字列
+   */
+  function buildSrcdoc(code, executionType) {
+    switch (executionType) {
+
+      // ── HTML / CSS ────────────────────────────────────────────
+      // CSS の場合は AI が完全な HTML+<style> として出力するため、
+      // html と同じパスで処理する。
+      case 'iframe-html':
+        return code;
+
+      // ── React (JSX / TSX) ─────────────────────────────────────
+      // Babel スタンドアロン + React + ReactDOM を CDN から読み込み、
+      // ユーザーコードを type="text/babel" スクリプトとして埋め込む。
+      // ユーザーは ReactDOM.createRoot(...).render(<App />) まで書く想定。
+      case 'iframe-react': {
+        // コード中の </script> を壊さないようエスケープ
+        const escaped = code.replace(/<\/script/gi, '<\\/script');
+        return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; margin: 16px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.min.js"></script>
+  <!-- Babel スタンドアロン（JSX / TSX トランスパイル） -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="react,typescript">
+${escaped}
+  </script>
+</body>
+</html>`;
+      }
+
+      // ── Vue 3 ─────────────────────────────────────────────────
+      // Vue CDN を読み込み後、ユーザーコードを通常スクリプトとして実行。
+      // ユーザーは createApp(...).mount('#app') まで書く想定。
+      case 'iframe-vue': {
+        const escaped = code.replace(/<\/script/gi, '<\\/script');
+        return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; margin: 16px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- Vue 3 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.min.js"></script>
+
+  <script>
+${escaped}
+  </script>
+</body>
+</html>`;
+      }
+
+      default:
+        return `<pre style="padding:16px;font-family:monospace;">${
+          code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        }</pre>`;
+    }
+  }
+
+  /**
+   * executionType が iframe 系かどうかを判定する。
+   * @param {string} executionType
+   * @returns {boolean}
+   */
+  function isIframeType(executionType) {
+    return executionType === 'iframe-html'
+      || executionType === 'iframe-react'
+      || executionType === 'iframe-vue';
+  }
+
+  /**
+   * output エリアに iframe を描画（または更新）する。
+   * @param {HTMLElement} outputPre  .output-area 要素
+   * @param {string}      srcdoc     表示する HTML 文字列
+   * @param {boolean}     isModal    モーダル内かどうか（高さ調整用）
+   */
+  function renderIframe(outputPre, srcdoc, isModal) {
+    // output-area を iframe コンテナとして流用する
+    // 既存の iframe があれば再利用、なければ新規作成
+    let iframe = outputPre.querySelector('iframe.sb-preview-iframe');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.className = 'sb-preview-iframe';
+      // allow-scripts のみ許可。allow-same-origin を付けると
+      // iframe 内から親 document へのアクセスが可能になりセキュリティリスクになるため付けない。
+      iframe.setAttribute('sandbox', 'allow-scripts');
+      iframe.style.cssText = [
+        'width:100%',
+        'border:none',
+        'display:block',
+        isModal ? 'height:480px' : 'height:300px',
+        'background:#fff',
+        'border-radius:0 0 4px 4px',
+      ].join(';');
+      // 既存のテキストノードを消して iframe を挿入
+      outputPre.textContent = '';
+      outputPre.appendChild(iframe);
+    }
+    iframe.srcdoc = srcdoc;
+  }
+
   // --- helper utilities ---
   function findEmbedRootsIn(node = document) {
     const roots = [];
@@ -137,6 +262,7 @@
     const execTextarea    = rootEl.querySelector('.sb-execCommand');
     const editorContainer = rootEl.querySelector('.sb-editor');
     const outputPre       = rootEl.querySelector('.output-area');
+    const cmdArea         = rootEl.querySelector('.sb-cmd-area');
 
     // ── 初期高さをコード行数から計算して即セット ──────────────
     updateEditorHeight(editorContainer, null, initialCode, isModal);
@@ -151,43 +277,49 @@
       langSelect.appendChild(o);
     });
 
-    // ── Map the current VSCode language to our sandbox config keys ──
+    // 言語マッピング（VSCode languageId → langConfig キー）
     let targetLang = window.CURRENT_LANG || langs[0];
     const langMap = {
-      'typescriptreact': 'typescript',
-      'javascriptreact': 'javascript',
-      'vue': 'javascript'
+      'typescriptreact': 'typescriptreact',
+      'javascriptreact': 'javascriptreact',
     };
     targetLang = langMap[targetLang] || targetLang;
 
-    // If mapped language isn't in LANG_CONFIG, fallback to the first available
     if (!LANG_CONFIG[targetLang]) {
       targetLang = langs[0];
     }
     langSelect.value = targetLang;
 
-    const curLang = langSelect.value || langs[0];
-    execTextarea.value = (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].command) || '';
+    /**
+     * 現在選択されている言語の executionType を返す。
+     */
+    function currentExecutionType() {
+      const lang = langSelect.value || langs[0];
+      return (LANG_CONFIG[lang] && LANG_CONFIG[lang].executionType) || 'terminal';
+    }
 
-    // 言語切り替え時にコマンドも更新
-    langSelect.addEventListener('change', () => {
-      const selected = langSelect.value;
-      execTextarea.value = (LANG_CONFIG[selected] && LANG_CONFIG[selected].command) || '';
-    });
-
-    // cell object
-    const cellObj = {
-      rootEl,
-      index: String(index),
-      outputEl: outputPre,
-      append(s) {
-        if (outputPre) {
-          outputPre.textContent += String(s);
-          outputPre.scrollTop = outputPre.scrollHeight;
-        }
+    /**
+     * executionType に応じて cmd-area と output エリアの表示を切り替える。
+     * iframe 系の場合はコマンド入力欄を隠す。
+     */
+    function applyExecutionTypeUI() {
+      const execType = currentExecutionType();
+      if (isIframeType(execType)) {
+        cmdArea.style.display = 'none';
+      } else {
+        cmdArea.style.display = '';
+        const lang = langSelect.value || langs[0];
+        execTextarea.value = (LANG_CONFIG[lang] && LANG_CONFIG[lang].command) || '';
       }
-    };
-    cells.set(String(index), cellObj);
+    }
+
+    // 初期適用
+    applyExecutionTypeUI();
+
+    // 言語切り替え時
+    langSelect.addEventListener('change', () => {
+      applyExecutionTypeUI();
+    });
 
     // ---- Load Template（初期コードに戻す） ----
     loadBtn.addEventListener('click', () => {
@@ -210,6 +342,16 @@
       }
       if (!code) code = editorContainer.textContent || '';
 
+      const execType = currentExecutionType();
+
+      // ── iframe 系: ブラウザ内でそのまま描画 ──────────────────
+      if (isIframeType(execType)) {
+        const srcdoc = buildSrcdoc(code, execType);
+        renderIframe(outputPre, srcdoc, isModal);
+        return; // extension への postMessage は不要
+      }
+
+      // ── terminal 系: 既存フロー ───────────────────────────────
       const execCommand = execTextarea ? execTextarea.value : '';
 
       if (outputPre) outputPre.textContent = '';
@@ -229,6 +371,7 @@
     });
 
     // ---- Monaco loader ----
+    const curLang = langSelect.value || langs[0];
     tryLoadMonaco(editorContainer, initialCode, curLang)
       .then(res => {
         monacoRef.editor = res.editor;
@@ -259,17 +402,41 @@
       });
     // ── ヘッダークリックでモーダルを開くリスナーを登録 ──
     attachHeaderClickListener(rootEl);
+
+    // cell object
+    const cellObj = {
+      rootEl,
+      index: String(index),
+      outputEl: outputPre,
+      append(s) {
+        // iframe モードの場合はテキスト追記しない
+        if (outputPre && !outputPre.querySelector('iframe.sb-preview-iframe')) {
+          outputPre.textContent += String(s);
+          outputPre.scrollTop = outputPre.scrollHeight;
+        }
+      }
+    };
+    cells.set(String(index), cellObj);
   }
 
-  // Monaco loader — overflow:hidden コンテナでも正しくレイアウトされるよう
-  // automaticLayout: true にしてリサイズ対応
+  // Monaco loader
   function tryLoadMonaco(containerEl, code, lang) {
     return new Promise((resolve, reject) => {
       if (!containerEl) return reject(new Error('no container'));
 
+      // VSCode の languageId → Monaco languageId マッピング
+      const monacoLangMap = {
+        'javascriptreact': 'javascript',
+        'typescriptreact': 'typescript',
+        'vue': 'html', // vue SFC の疑似ハイライト
+        'css': 'html',
+        'html': 'html',
+      };
+
       function createEditor(mon) {
         const supported = ['javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'go', 'php', 'ruby', 'rust', 'html', 'css', 'json', 'shell', 'dart', 'kotlin'];
-        const monLang = supported.includes(lang) ? lang : 'javascript';
+        const rawLang = monacoLangMap[lang] || lang;
+        const monLang = supported.includes(rawLang) ? rawLang : 'javascript';
         const model = mon.editor.createModel(code || '', monLang);
         const editor = mon.editor.create(containerEl, {
           model,

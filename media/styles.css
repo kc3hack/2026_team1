@@ -529,3 +529,24 @@ code, pre {
 .output-area         { font-family: var(--md-font-mono); font-size: .8rem; white-space: pre-wrap; }
 .output-content      { display: none; padding: 10px; }
 .output-content.open { display: block; }
+
+/* ── iframe プレビュー ───────────────────────────────────── */
+/* output-area が iframe コンテナとして使われる場合のスタイル */
+.sb-output .output-area:has(iframe.sb-preview-iframe) {
+  padding: 0;
+  max-height: none;   /* iframe は自前で高さを持つため制限しない */
+  background: #fff;   /* iframe 背景は白（ブラウザデフォルト） */
+}
+
+.sb-preview-iframe {
+  width:        100%;
+  border:       none;
+  display:      block;
+  background:   #fff;
+  /* デフォルト高さは sandbox_init.js で style.height に直接書き込まれる */
+}
+
+/* モーダル内は iframe をより大きく表示 */
+.dm-modal-card .sb-preview-iframe {
+  height: 480px !important;
+}

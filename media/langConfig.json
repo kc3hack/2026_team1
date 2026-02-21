@@ -1,74 +1,121 @@
 {
   "javascript": {
+    "executionType": "terminal",
     "command": "node {file}",
     "filename": "test.js",
     "deletefile": "",
     "templatecode": "console.log(\"Hello World (JS)\");"
   },
   "typescript": {
+    "executionType": "terminal",
     "command": "ts-node {file}",
     "filename": "test.ts",
     "deletefile": "",
     "templatecode": "const greet = (name: string) => `Hello ${name} (TS)`;\nconsole.log(greet(\"World\"));"
   },
   "c": {
+    "executionType": "terminal",
     "command": "gcc {file} -o a.out && ./a.out",
     "filename": "test.c",
     "deletefile": "a.out",
     "templatecode": "#include <stdio.h>\nint main(){ printf(\"Hello C\\n\"); return 0; }"
   },
   "python": {
+    "executionType": "terminal",
     "command": "python3 {file}",
     "filename": "test.py",
     "deletefile": "",
     "templatecode": "print('Hello Python')"
   },
   "java": {
+    "executionType": "terminal",
     "command": "javac {file} && java Test",
     "filename": "Test.java",
     "deletefile": "Test.class",
     "templatecode": "public class Test {\n  public static void main(String[] args) {\n    System.out.println(\"Hello Java\");\n  }\n}"
   },
   "cpp": {
+    "executionType": "terminal",
     "command": "g++ {file} -o a.out && ./a.out",
     "filename": "test.cpp",
     "deletefile": "a.out",
     "templatecode": "#include <iostream>\nint main() { std::cout << \"Hello C++\" << std::endl; return 0; }"
   },
   "go": {
+    "executionType": "terminal",
     "command": "go run {file}",
     "filename": "test.go",
     "deletefile": "",
     "templatecode": "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"Hello Go\") }"
   },
   "php": {
+    "executionType": "terminal",
     "command": "php {file}",
     "filename": "test.php",
     "deletefile": "",
     "templatecode": "<?php\necho \"Hello PHP\\n\";\n?>"
   },
   "ruby": {
+    "executionType": "terminal",
     "command": "ruby {file}",
     "filename": "test.rb",
     "deletefile": "",
     "templatecode": "puts 'Hello Ruby'"
   },
   "rust": {
+    "executionType": "terminal",
     "command": "rustc {file} && ./test",
     "filename": "test.rs",
     "deletefile": "test",
     "templatecode": "fn main() {\n    println!(\"Hello Rust\");\n}"
   },
   "kotlin": {
+    "executionType": "terminal",
     "command": "kotlinc {file} -include-runtime -d test.jar && java -jar test.jar",
     "filename": "test.kt",
     "deletefile": "test.jar",
     "templatecode": "fun main() {\n    println(\"Hello Kotlin\")\n}"
   },
   "dart": {
+    "executionType": "terminal",
     "command": "dart run {file}",
     "filename": "test.dart",
     "deletefile": "",
     "templatecode": "void main() {\n  print('Hello Dart');\n}"
+  },
+  "html": {
+    "executionType": "iframe-html",
+    "command": "",
+    "filename": "index.html",
+    "deletefile": "",
+    "templatecode": "<!DOCTYPE html>\n<html lang=\"ja\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Preview</title>\n</head>\n<body>\n  <h1>Hello HTML</h1>\n</body>\n</html>"
+  },
+  "css": {
+    "executionType": "iframe-html",
+    "command": "",
+    "filename": "style.html",
+    "deletefile": "",
+    "templatecode": "<!DOCTYPE html>\n<html lang=\"ja\">\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { font-family: sans-serif; padding: 20px; }\n    h1 { color: steelblue; }\n  </style>\n</head>\n<body>\n  <h1>Hello CSS</h1>\n  <p>This is a styled paragraph.</p>\n</body>\n</html>"
+  },
+  "javascriptreact": {
+    "executionType": "iframe-react",
+    "command": "",
+    "filename": "app.jsx",
+    "deletefile": "",
+    "templatecode": "function App() {\n  return <h1>Hello React (JSX)</h1>;\n}\n\nReactDOM.createRoot(document.getElementById('root')).render(<App />);"
+  },
+  "typescriptreact": {
+    "executionType": "iframe-react",
+    "command": "",
+    "filename": "app.tsx",
+    "deletefile": "",
+    "templatecode": "function App(): JSX.Element {\n  return <h1>Hello React (TSX)</h1>;\n}\n\nReactDOM.createRoot(document.getElementById('root')).render(<App />);"
+  },
+  "vue": {
+    "executionType": "iframe-vue",
+    "command": "",
+    "filename": "app.vue",
+    "deletefile": "",
+    "templatecode": "const { createApp } = Vue;\n\ncreateApp({\n  data() {\n    return { message: 'Hello Vue!' };\n  },\n  template: `<h1>{{ message }}</h1>`\n}).mount('#app');"
   }
 }
