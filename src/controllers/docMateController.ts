@@ -58,7 +58,7 @@ export class DocMateController {
 
         // 4. Summarize & Generate Code
         progress.report({ message: `Summarizing and generating code with Gemini...` });
-        const geminiResponse = await this.geminiService.summarize(markdown);
+        const geminiResponse = await this.geminiService.summarize(markdown, language);
 
         // 5. Initial Execution (Best Effort)
         progress.report({ message: `Executing sample codes...` });

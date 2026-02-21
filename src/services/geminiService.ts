@@ -36,14 +36,14 @@ export class GeminiService {
         }
     }
 
-    async summarize(markdown: string): Promise<GeminiResponse> {
+    async summarize(markdown: string, language: string): Promise<GeminiResponse> {
 
 
         const prompt = `
 You are a helpful coding assistant.
 Read the following documentation (in Markdown) and provide:
 1. A concise summary in Japanese.
-2. Multiple runnable sample code blocks in JavaScript or TypeScript that demonstrates different usages (e.g. basic usage, edge cases, typical patterns).
+2. Multiple runnable sample code blocks in ${language} that demonstrates different usages (e.g. basic usage, edge cases, typical patterns).
    - Each code block should be self-contained.
    - Do not use external libraries unless necessary.
 
