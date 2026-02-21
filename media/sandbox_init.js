@@ -268,7 +268,8 @@
       if (!containerEl) return reject(new Error('no container'));
 
       function createEditor(mon) {
-        const monLang = lang === 'typescript' ? 'typescript' : 'javascript';
+        const supported = ['javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'go', 'php', 'ruby', 'rust', 'html', 'css', 'json', 'shell', 'dart', 'kotlin'];
+        const monLang = supported.includes(lang) ? lang : 'javascript';
         const model = mon.editor.createModel(code || '', monLang);
         const editor = mon.editor.create(containerEl, {
           model,
