@@ -23,8 +23,8 @@ export class DocMateWebviewProvider {
         private context: vscode.ExtensionContext
     ) { }
 
-    public update(summary: string, examples: ExampleData[], url: string) {
-        this.panel.webview.html = this.getHtmlForWebview(summary, examples, url);
+    public update(summary: string, examples: ExampleData[], url: string, language: string) {
+        this.panel.webview.html = this.getHtmlForWebview(summary, examples, url, language);
     }
 
 
@@ -37,7 +37,7 @@ export class DocMateWebviewProvider {
         return text;
     }
 
-    private getHtmlForWebview(summary: string, examples: ExampleData[], url: string): string {
+    private getHtmlForWebview(summary: string, examples: ExampleData[], url: string, language: string): string {
         const summaryHtml = marked.parse(summary);
 
         const examplesHtml = examples.map((ex, index) => this.generateCellHtml(ex, index)).join('');
@@ -118,7 +118,10 @@ export class DocMateWebviewProvider {
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
     <link rel="stylesheet" href="${styleUri}">
-    <script nonce="${nonce}">window.LANG_CONFIG = ${JSON.stringify(langConfigObj)};</script>
+    <script nonce="${nonce}">
+        window.LANG_CONFIG = ${JSON.stringify(langConfigObj)};
+        window.CURRENT_LANG = "${language}";
+    </script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 
 </head>

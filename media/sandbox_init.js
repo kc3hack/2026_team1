@@ -150,6 +150,22 @@
       o.value = l; o.textContent = l;
       langSelect.appendChild(o);
     });
+
+    // ── Map the current VSCode language to our sandbox config keys ──
+    let targetLang = window.CURRENT_LANG || langs[0];
+    const langMap = {
+      'typescriptreact': 'typescript',
+      'javascriptreact': 'javascript',
+      'vue': 'javascript'
+    };
+    targetLang = langMap[targetLang] || targetLang;
+
+    // If mapped language isn't in LANG_CONFIG, fallback to the first available
+    if (!LANG_CONFIG[targetLang]) {
+      targetLang = langs[0];
+    }
+    langSelect.value = targetLang;
+
     const curLang = langSelect.value || langs[0];
     execTextarea.value = (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].command) || '';
 

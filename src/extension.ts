@@ -90,7 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
 					);
 
 					const webviewProvider = new DocMateWebviewProvider(panel, context.extensionUri, context);
-					webviewProvider.update(result.summary, result.examples, result.url);
+					webviewProvider.update(result.summary, result.examples, result.url, language);
 
 					panel.webview.onDidReceiveMessage(
 						async (message) => {
