@@ -19,7 +19,7 @@ export class DocMateController {
 
     async explain(keyword: string, language: string, progress: vscode.Progress<{ message?: string; increment?: number }>): Promise<{ summary: string; examples: { title: string; description: string; code: string; executionOutput: string }[]; url: string }> {
         // 1. Search
-        progress.report({ message: `Searching MDN for "${keyword}"...` });
+        progress.report({ message: `Searching documentation for "${keyword}"...` });
         const searchResult = await this.docService.search(keyword, language);
         if (!searchResult) {
             throw new Error(`No documentation found for "${keyword}"`);
