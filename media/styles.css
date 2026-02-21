@@ -1,0 +1,531 @@
+/* ============================================================
+   DocMate – Material Design 3 × VS Code Theme-aware stylesheet
+   --vscode-* 変数を使い、ライト/ダーク/カスタムテーマに自動追従する
+   ============================================================ */
+
+/* ── Google Fonts ─────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
+
+/* ── Theme-aware Design Tokens ────────────────────────────── */
+/*
+ * VS Code が Webview に注入する --vscode-* 変数を読み取り、
+ * DocMate 独自の --md-* トークンにマッピングする。
+ * テーマが変わると --vscode-* が自動更新されるため追従する。
+ */
+:root {
+  /* ── Surface ── */
+  --md-surface:           var(--vscode-editor-background);
+  --md-surface-container: var(--vscode-editorWidget-background,   var(--vscode-editor-background));
+  --md-surface-variant:   var(--vscode-input-background,          var(--vscode-editor-background));
+  --md-on-surface:        var(--vscode-editor-foreground);
+  --md-on-surface-dim:    var(--vscode-descriptionForeground,     var(--vscode-editor-foreground));
+
+  /* ── Primary ── */
+  --md-primary:           var(--vscode-textLink-foreground,       #81d4c8);
+  --md-primary-container: var(--vscode-button-background,         #003731);
+  --md-on-primary:        var(--vscode-button-foreground,         #ffffff);
+
+  /* ── Secondary / Accent ── */
+  --md-secondary:         var(--vscode-textPreformat-foreground,  #b0ccc9);
+
+  /* ── Input / Focus ── */
+  --md-input-bg:          var(--vscode-input-background);
+  --md-input-fg:          var(--vscode-input-foreground);
+  --md-input-border:      var(--vscode-input-border,              transparent);
+  --md-focus-border:      var(--vscode-focusBorder,               #81d4c8);
+
+  /* ── Outline ── */
+  --md-outline:           var(--vscode-widget-border,             rgba(128,128,128,.35));
+  --md-outline-variant:   var(--vscode-editorWidget-border,       rgba(128,128,128,.18));
+
+  /* ── Hover / Selection ── */
+  --md-hover-bg:          var(--vscode-list-hoverBackground,      rgba(128,128,128,.1));
+
+  /* ── Error ── */
+  --md-error:             var(--vscode-editorError-foreground,    #f44747);
+
+  /* ── Elevation overlays (テーマ主色を薄く重ねた tonal surface) ── */
+  --md-elev-1: color-mix(in srgb, var(--md-primary)  5%, var(--md-surface));
+  --md-elev-2: color-mix(in srgb, var(--md-primary)  8%, var(--md-surface));
+  --md-elev-3: color-mix(in srgb, var(--md-primary) 11%, var(--md-surface));
+
+  /* ── Shape ── */
+  --md-radius-sm: 4px;
+  --md-radius-md: 8px;
+  --md-radius-lg: 12px;
+  --md-radius-xl: 16px;
+
+  /* ── Motion ── */
+  --md-motion-standard:   cubic-bezier(0.2, 0, 0, 1);
+  --md-duration-short:    150ms;
+  --md-duration-medium:   250ms;
+
+  /* ── Typography ── */
+  --md-font-display: 'Google Sans', var(--vscode-font-family),        system-ui, sans-serif;
+  --md-font-mono:    'Roboto Mono', var(--vscode-editor-font-family), monospace;
+
+  /* ── Editor height helpers (sandbox_init.js と共有) ── */
+  --md-editor-line-height: 20px;
+  --md-editor-padding:      8px;
+  --md-editor-min-lines:    4;
+  --md-editor-max-lines:    30;
+}
+
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family:            var(--md-font-display);
+  font-size:              var(--vscode-font-size, 13px);
+  margin:                 0;
+  padding:                0;
+  background:             var(--md-surface);
+  color:                  var(--md-on-surface);
+  line-height:            1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background:    var(--md-outline);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--md-secondary); }
+
+/* ── Typography ──────────────────────────────────────────── */
+h1, h2, h3, h4 {
+  font-family:    var(--md-font-display);
+  font-weight:    500;
+  color:          var(--md-on-surface);
+  margin:         0 0 .5em;
+  letter-spacing: .01em;
+}
+h2 { font-size: 1.35rem; }
+h3 { font-size: 1.1rem;  }
+
+a {
+  color:           var(--md-primary);
+  text-decoration: none;
+  transition:      opacity var(--md-duration-short) var(--md-motion-standard);
+}
+a:hover { opacity: .8; text-decoration: underline; }
+
+code, pre {
+  font-family: var(--md-font-mono);
+  font-size:   .85em;
+}
+
+/* ── Page Sections ───────────────────────────────────────── */
+.section { padding: 20px 24px 0; }
+.section:last-child { padding-bottom: 24px; }
+
+.section > h2 {
+  display:        flex;
+  align-items:    center;
+  gap:            8px;
+  font-size:      1.1rem;
+  font-weight:    700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color:          var(--md-primary);
+  padding-bottom: 8px;
+  border-bottom:  1px solid var(--md-outline-variant);
+  margin-bottom:  16px;
+}
+
+/* Summary prose */
+.section > div p  { line-height: 1.75; margin: .6em 0; }
+.section > div li { margin: .3em 0; }
+.section > div pre {
+  background:    var(--md-surface-variant);
+  border:        1px solid var(--md-outline-variant);
+  border-radius: var(--md-radius-md);
+  padding:       12px 14px;
+  overflow-x:    auto;
+}
+
+/* MDN 参照リンク chip
+ * 背景を --vscode-badge-background で明示し、
+ * 文字を --vscode-badge-foreground で確保することで
+ * テーマに関わらずコントラストを保つ。            */
+.section > p > a {
+  display:          inline-flex;
+  align-items:      center;
+  gap:              6px;
+  font-size:        .78rem;
+  font-weight:      500;
+  /* badge 変数が必ずテーマに合った前景/背景ペアになっている */
+  color:            var(--vscode-badge-foreground,    #ffffff);
+  background:       var(--vscode-badge-background,    #4d4d4d);
+  border:           1px solid transparent;
+  border-radius:    20px;
+  padding:          3px 12px;
+  margin-top:       8px;
+  transition:
+    background  var(--md-duration-short) var(--md-motion-standard),
+    box-shadow  var(--md-duration-short);
+}
+.section > p > a:hover {
+  background:      color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 80%, var(--md-primary) 20%);
+  box-shadow:      0 0 0 1px var(--md-primary);
+  text-decoration: none;
+}
+
+/* ── Example Cell ────────────────────────────────────────── */
+.example-cell {
+  margin-bottom: 20px;
+  border-radius: var(--md-radius-xl);
+  overflow:      hidden;
+  border:        1px solid var(--md-outline-variant);
+  background:    var(--md-surface-container);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, var(--md-outline) 40%, transparent),
+    0 1px 2px color-mix(in srgb, var(--md-outline) 30%, transparent);
+  transition: box-shadow var(--md-duration-medium) var(--md-motion-standard);
+}
+.example-cell:hover {
+  box-shadow:
+    0 4px 8px color-mix(in srgb, var(--md-outline) 50%, transparent),
+    0 2px 4px color-mix(in srgb, var(--md-outline) 35%, transparent);
+}
+
+.example-header {
+  padding:       12px 16px 10px;
+  background:    var(--md-elev-1);
+  border-bottom: 1px solid var(--md-outline-variant);
+  cursor:        pointer;
+  user-select:   none;
+  display:       flex;
+  align-items:   flex-start;
+  gap:           10px;
+  transition:    background var(--md-duration-short) var(--md-motion-standard);
+}
+.example-header:hover {
+  background: var(--md-elev-2);
+}
+/* expand アイコン（右端） */
+.example-header::after {
+  content:     '⤢';
+  font-size:   .85rem;
+  color:       var(--md-on-surface-dim);
+  margin-left: auto;
+  flex-shrink: 0;
+  transition:  color var(--md-duration-short) var(--md-motion-standard),
+               transform var(--md-duration-short);
+}
+.example-header:hover::after {
+  color:     var(--md-primary);
+  transform: scale(1.15);
+}
+
+.example-header-text { flex: 1; min-width: 0; }
+.example-header strong {
+  display:     block;
+  font-size:   .95rem;
+  font-weight: 600;
+  color:       var(--md-primary);
+}
+.example-header .description {
+  font-size:  .8rem;
+  color:      var(--md-on-surface-dim);
+  margin-top: 2px;
+}
+
+/* ── Modal overlay ───────────────────────────────────────── */
+.dm-modal-overlay {
+  display:         none;
+  position:        fixed;
+  inset:           0;
+  z-index:         9999;
+  background:      rgba(0, 0, 0, .55);
+  backdrop-filter: blur(4px);
+  align-items:     center;
+  justify-content: center;
+  padding:         24px;
+}
+.dm-modal-overlay.is-open {
+  display:   flex;
+  animation: dm-overlay-in var(--md-duration-medium) var(--md-motion-standard, ease) both;
+}
+@keyframes dm-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* モーダルカード */
+.dm-modal-card {
+  position:      relative;
+  width:         100%;
+  max-width:     860px;
+  max-height:    90vh;
+  overflow-y:    auto;
+  border-radius: var(--md-radius-xl);
+  border:        1px solid var(--md-outline-variant);
+  background:    var(--md-surface-container);
+  box-shadow:
+    0 8px 32px color-mix(in srgb, var(--md-outline) 60%, transparent),
+    0 2px  8px color-mix(in srgb, var(--md-outline) 40%, transparent);
+  animation: dm-card-in var(--md-duration-medium) var(--md-motion-standard, ease) both;
+}
+@keyframes dm-card-in {
+  from { opacity: 0; transform: scale(.95) translateY(12px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0);    }
+}
+
+/* モーダルヘッダー */
+.dm-modal-header {
+  display:       flex;
+  align-items:   flex-start;
+  gap:           10px;
+  padding:       14px 16px 12px;
+  background:    var(--md-elev-1);
+  border-bottom: 1px solid var(--md-outline-variant);
+  position:      sticky;
+  top:           0;
+  z-index:       1;
+}
+.dm-modal-header-text { flex: 1; min-width: 0; }
+.dm-modal-header strong {
+  display:     block;
+  font-size:   1rem;
+  font-weight: 600;
+  color:       var(--md-primary);
+}
+.dm-modal-header .description {
+  font-size:  .82rem;
+  color:      var(--md-on-surface-dim);
+  margin-top: 3px;
+}
+
+/* 閉じるボタン */
+.dm-modal-close {
+  flex-shrink:     0;
+  width:           28px;
+  height:          28px;
+  border:          none;
+  border-radius:   50%;
+  background:      transparent;
+  color:           var(--md-on-surface-dim);
+  font-size:       1.1rem;
+  line-height:     1;
+  cursor:          pointer;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  transition:
+    background var(--md-duration-short) var(--md-motion-standard),
+    color      var(--md-duration-short);
+}
+.dm-modal-close:hover {
+  background: var(--md-hover-bg);
+  color:      var(--md-on-surface);
+}
+
+/* モーダル内は output-area の max-height を緩和 */
+.dm-modal-card .sb-output .output-area {
+  max-height: 320px;
+}
+
+/* ── Sandbox UI ──────────────────────────────────────────── */
+.sandbox-ui {
+  display:        flex;
+  flex-direction: column;
+  background:     var(--md-surface);
+}
+
+/* Toolbar */
+.sandbox-toolbar {
+  display:       flex;
+  align-items:   center;
+  gap:           8px;
+  padding:       8px 12px;
+  background:    var(--md-elev-2);
+  border-bottom: 1px solid var(--md-outline-variant);
+  flex-shrink:   0;
+}
+
+/* Language select */
+.sb-langSelect {
+  height:        32px;
+  padding:       0 10px;
+  border-radius: var(--md-radius-sm);
+  border:        1px solid var(--md-input-border);
+  background:    var(--md-input-bg);
+  color:         var(--md-input-fg);
+  font-family:   var(--md-font-display);
+  font-size:     .8rem;
+  font-weight:   500;
+  cursor:        pointer;
+  outline:       none;
+  transition:
+    border-color var(--md-duration-short) var(--md-motion-standard),
+    box-shadow   var(--md-duration-short);
+}
+.sb-langSelect:hover,
+.sb-langSelect:focus {
+  border-color: var(--md-focus-border);
+  box-shadow:   0 0 0 1px var(--md-focus-border);
+}
+
+/* Buttons base */
+.sandbox-toolbar button {
+  height:         32px;
+  padding:        0 14px;
+  border:         none;
+  border-radius:  var(--md-radius-sm);
+  font-family:    var(--md-font-display);
+  font-size:      .8rem;
+  font-weight:    500;
+  letter-spacing: .04em;
+  cursor:         pointer;
+  outline:        none;
+  position:       relative;
+  overflow:       hidden;
+  transition:
+    background  var(--md-duration-short) var(--md-motion-standard),
+    box-shadow  var(--md-duration-short) var(--md-motion-standard),
+    transform   var(--md-duration-short);
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Ripple overlay */
+.sandbox-toolbar button::after {
+  content:        '';
+  position:       absolute;
+  inset:          0;
+  background:     currentColor;
+  opacity:        0;
+  transition:     opacity var(--md-duration-short) var(--md-motion-standard);
+  border-radius:  inherit;
+  pointer-events: none;
+}
+.sandbox-toolbar button:hover::after  { opacity: .08; }
+.sandbox-toolbar button:active::after { opacity: .14; }
+.sandbox-toolbar button:active        { transform: scale(0.97); }
+.sandbox-toolbar button:disabled      { opacity: .38; cursor: not-allowed; transform: none; }
+
+/* Run – VSCode button color を使用 */
+.sb-runBtn {
+  background: var(--md-primary-container);
+  color:      var(--md-on-primary);
+}
+.sb-runBtn:not(:disabled):hover {
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--md-outline) 60%, transparent);
+}
+
+/* Load Template – Outlined */
+.sb-loadBtn {
+  background:  transparent;
+  color:       var(--md-on-surface-dim);
+  border:      1px solid var(--md-outline) !important;
+}
+.sb-loadBtn:not(:disabled):hover {
+  background:   var(--md-hover-bg);
+  border-color: var(--md-focus-border) !important;
+  color:        var(--md-on-surface);
+}
+
+/* Command Area */
+.sb-cmd-area {
+  padding:       6px 12px;
+  background:    var(--md-elev-1);
+  border-bottom: 1px solid var(--md-outline-variant);
+  flex-shrink:   0;
+}
+
+.sb-execCommand {
+  width:         100%;
+  box-sizing:    border-box;
+  height:        44px;
+  resize:        vertical;
+  font-family:   var(--md-font-mono);
+  font-size:     .78rem;
+  padding:       6px 10px;
+  background:    var(--md-input-bg);
+  color:         var(--md-input-fg);
+  border:        1px solid var(--md-input-border);
+  border-radius: var(--md-radius-sm);
+  outline:       none;
+  transition:
+    border-color var(--md-duration-short) var(--md-motion-standard),
+    box-shadow   var(--md-duration-short);
+  caret-color:   var(--md-primary);
+}
+.sb-execCommand:focus {
+  border-color: var(--md-focus-border);
+  box-shadow:   0 0 0 1px var(--md-focus-border);
+}
+
+/* Monaco Editor Container
+ * height は sandbox_init.js がコード行数から計算して style.height に書き込む。
+ * ここでは min-height のみ保持し、transition でアニメーションさせる。       */
+.sb-editor {
+  min-height: calc(
+    var(--md-editor-min-lines) * var(--md-editor-line-height)
+    + var(--md-editor-padding) * 2
+  );
+  overflow:    hidden;
+  flex-shrink: 0;
+  position:    relative;
+  transition:  height var(--md-duration-medium) var(--md-motion-standard);
+}
+.sb-editor .monaco-editor .overflow-guard          { border-radius: 0 !important; }
+.sb-editor .monaco-scrollable-element > .scrollbar { z-index: 10; }
+
+/* Output Area */
+.sb-output {
+  flex-shrink: 0;
+  border-top:  1px solid var(--md-outline-variant);
+  /* ターミナル背景があればそれを、なければ surface-variant を使用 */
+  background:  var(--vscode-terminal-background, var(--md-surface-variant));
+}
+
+.sb-output .output-header {
+  display:        flex;
+  align-items:    center;
+  gap:            6px;
+  padding:        6px 12px;
+  font-family:    var(--md-font-display);
+  font-size:      .7rem;
+  font-weight:    700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color:          var(--md-on-surface-dim);
+  border-bottom:  1px solid var(--md-outline-variant);
+  user-select:    none;
+}
+
+.sb-output .output-area {
+  padding:     10px 14px;
+  margin:      0;
+  font-family: var(--md-font-mono);
+  font-size:   .8rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-y:  auto;
+  max-height:  220px;
+  word-break:  break-all;
+  /* ターミナル文字色があればそれを優先 */
+  color:       var(--vscode-terminal-foreground, var(--md-on-surface));
+}
+
+/* ── Loading spinner ─────────────────────────────────────── */
+.loading {
+  display:   inline-block;
+  animation: md-spin 1s linear infinite;
+}
+@keyframes md-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Legacy compatibility ─────────────────────────────────── */
+.cell                { margin-bottom: 20px; }
+.cell-header         { padding: 8px 12px; font-weight: 600; }
+.cell-desc           { font-size: .85em; color: var(--md-on-surface-dim); }
+.output-area         { font-family: var(--md-font-mono); font-size: .8rem; white-space: pre-wrap; }
+.output-content      { display: none; padding: 10px; }
+.output-content.open { display: block; }
