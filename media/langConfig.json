@@ -21,7 +21,7 @@
     "filename": "test.c",
     "deletefile": "a.out",
     "templatecode": "#include <stdio.h>\nint main(){ printf(\"Hello C\\n\"); return 0; }",
-    "promptHint": ""
+    "promptHint": "- The code is compiled as a single file 'test.c' with gcc.\n- Do NOT split code across multiple files or use external libraries beyond the C standard library.\n- Always define the entry point as 'int main()' and return 0."
   },
   "python": {
     "executionType": "terminal",
@@ -37,7 +37,7 @@
     "filename": "Test.java",
     "deletefile": "Test.class",
     "templatecode": "public class Test {\n  public static void main(String[] args) {\n    System.out.println(\"Hello Java\");\n  }\n}",
-    "promptHint": ""
+    "promptHint": "- The file is saved as 'Test.java' and executed with 'java Test'.\n- The public class name MUST be exactly 'Test' to match the filename.\n- Do NOT use any other public class name (e.g. 'Main', 'Solution'). Only 'Test' is allowed.\n- All code must be written inside the single 'Test' class.\n- Non-public helper classes may be defined in the same file."
   },
   "cpp": {
     "executionType": "terminal",
@@ -45,7 +45,7 @@
     "filename": "test.cpp",
     "deletefile": "a.out",
     "templatecode": "#include <iostream>\nint main() { std::cout << \"Hello C++\" << std::endl; return 0; }",
-    "promptHint": ""
+    "promptHint": "- The code is compiled as a single file 'test.cpp' with g++.\n- Do NOT split code across multiple files or use external libraries beyond the C++ standard library (STL).\n- Always define the entry point as 'int main()' and return 0."
   },
   "go": {
     "executionType": "terminal",
@@ -77,7 +77,7 @@
     "filename": "test.rs",
     "deletefile": "test",
     "templatecode": "fn main() {\n    println!(\"Hello Rust\");\n}",
-    "promptHint": ""
+    "promptHint": "- The code is compiled as a single file 'test.rs' with 'rustc' directly (not Cargo).\n- Do NOT use 'extern crate' or any external crates; only the Rust standard library is available.\n- Do NOT split code across multiple files or use Cargo project structures.\n- Define the entry point as 'fn main()'."
   },
   "kotlin": {
     "executionType": "terminal",
@@ -85,7 +85,7 @@
     "filename": "test.kt",
     "deletefile": "test.jar",
     "templatecode": "fun main() {\n    println(\"Hello Kotlin\")\n}",
-    "promptHint": ""
+    "promptHint": "- The code is compiled as a single file 'test.kt' and run as a JAR.\n- Define the entry point as a top-level 'fun main()' function (not inside a class).\n- Do NOT split code across multiple files or use multi-file project structures.\n- External dependencies (Gradle/Maven) are not available; use only the Kotlin standard library."
   },
   "dart": {
     "executionType": "terminal",
