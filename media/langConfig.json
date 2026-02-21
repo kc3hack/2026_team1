@@ -1,0 +1,20 @@
+{
+  "javascript": {
+    "command": "node {file}",
+    "filename": "test.js",
+    "deletefile": "",
+    "templatecode": "console.log(\"Hello World (JS)\");"
+  },
+  "typescript": {
+    "command": "ts-node {file}",
+    "filename": "test.ts",
+    "deletefile": "",
+    "templatecode": "const greet = (name: string) => `Hello ${name} (TS)`;\nconsole.log(greet(\"World\"));"
+  },
+  "c": {
+    "command": "gcc {file} -o a.out && ./a.out",
+    "filename": "test.c",
+    "deletefile": "a.out",
+    "templatecode": "#include <stdio.h>\nint main(){ printf(\"Hello C\\n\"); return 0; }"
+  }
+}

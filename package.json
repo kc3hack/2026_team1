@@ -63,24 +63,27 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.97.0",
+    "@types/jsdom": "^21.1.7",
+    "@types/marked": "^4.0.8",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/turndown": "^5.0.5",
+    "@types/uuid": "^10.0.0",
+    "@types/vscode": "^1.97.0",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
-    "eslint": "^9.19.0",
-    "typescript": "^5.7.3",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
-    "@types/jsdom": "^21.1.7",
-    "@types/turndown": "^5.0.5",
-    "@types/marked": "^4.0.8"
+    "eslint": "^9.19.0",
+    "typescript": "^5.7.3"
   },
   "dependencies": {
     "@google/generative-ai": "^0.2.1",
+    "dotenv": "^17.3.1",
     "jsdom": "^24.0.0",
+    "marked": "^4.3.0",
     "turndown": "^7.2.0",
-    "marked": "^4.3.0"
+    "uuid": "^8.3.2"
   },
   "publisher": "kudo"
 }

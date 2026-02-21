@@ -1,7 +1,7 @@
 
 import * as vscode from 'vscode';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
-
+import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
+import { GenerateUUIDService } from './generateUUIDService';
 
 export interface Example {
     title: string;
@@ -18,8 +18,11 @@ export class GeminiService {
     private genAI: GoogleGenerativeAI | undefined;
     private model: GenerativeModel | undefined;
 
-    constructor() {
+    private generateUUIDService: GenerateUUIDService;
+
+    constructor(generateUUIDService: GenerateUUIDService) {
         this.initialize();
+        this.generateUUIDService = generateUUIDService;
     }
 
     private initialize() {
@@ -34,13 +37,7 @@ export class GeminiService {
     }
 
     async summarize(markdown: string): Promise<GeminiResponse> {
-        if (!this.model) {
-            // Re-try initialization in case config changed
-            this.initialize();
-            if (!this.model) {
-                throw new Error('Gemini API Key is not configured. Please set docmate.apiKey in settings.');
-            }
-        }
+
 
         const prompt = `
 You are a helpful coding assistant.
@@ -63,41 +60,33 @@ Documentation:
 ${markdown}
         `;
 
+        /**
+         * 最初にAPIキーがローカルで設定されていたら、それを使う
+         * ローカルで設定されていないもしくは呼び出しに失敗したらフォールバックを行い、
+         * プロキシサーバーを介してgeminiを呼び出す
+         */
         try {
-            const result = await this.model.generateContent(prompt);
-            const responseText = result.response.text();
+            // memo: nekomoti君が書いたコードをメソッド化
+            const result = await this.callGemini(prompt);
+            const parsed = this.parseGeminiResponse(result);
+            return this.normalizeGeminiResult(parsed);
+        } catch (primaryError) {
+            console.warn('Failed to call the Gemini API directly', primaryError);
 
-            // Clean up potentially fenced JSON
-            const cleanJson = responseText.replace(/```json\n?|\n?```/g, '').trim();
+            try {
+                const fallbackResult = await this.fetchGeminiProxyServer(prompt);
+                const fallbackParsed = this.parseGeminiResponse(fallbackResult);
+                return this.normalizeGeminiResult(fallbackParsed);
+            } catch (fallbackError) {
+                console.error('Fallback also failed', fallbackError);
 
-            const parsed = JSON.parse(cleanJson) as GeminiResponse;
-            // Ensure examples is an array even if single object returned (though prompt asks for array)
-            if (!Array.isArray(parsed.examples)) {
-                // heuristic fix if AI returns bad format
-                if ((parsed as any).code) {
-                    parsed.examples = [{
-                        title: "Basic Usage",
-                        description: "Generated example",
-                        code: (parsed as any).code
-                    }];
-                } else {
-                    parsed.examples = [];
-                }
+                throw fallbackError;
             }
-            return parsed;
-        } catch (error) {
-            console.error('Gemini API Error:', error);
-            throw error;
         }
     }
 
     async fixCode(originalCode: string, error: string): Promise<GeminiResponse> {
-        if (!this.model) {
-            this.initialize();
-            if (!this.model) {
-                throw new Error('Gemini API Key is not configured.');
-            }
-        }
+
 
         const prompt = `
 You are a helpful coding assistant.
@@ -120,14 +109,109 @@ Do not include markdown code fences in the output, just raw JSON.
         `;
 
         try {
-            const result = await this.model.generateContent(prompt);
-            const responseText = result.response.text();
-            const cleanJson = responseText.replace(/```json\n?|\n?```/g, '').trim();
-            const parsed = JSON.parse(cleanJson) as GeminiResponse;
-            return parsed;
+            const result = await this.callGemini(prompt);
+            return this.parseGeminiResponse(result);
         } catch (error) {
             console.error('Gemini API Error (fixCode):', error);
             throw error;
+        }
+    }
+
+    /**
+     * Geminiが配列形式で返さなかった場合配列に変換するパース処理
+     * @param result 
+     * @returns 
+     */
+    private normalizeGeminiResult(parsed: GeminiResponse): GeminiResponse {
+
+        if (!Array.isArray(parsed.examples)) {
+            // heuristic fix if AI returns bad format
+            if ((parsed as any).code) {
+                parsed.examples = [{
+                    title: "Basic Usage",
+                    description: "Generated example",
+                    code: (parsed as any).code
+                }];
+            } else {
+                parsed.examples = [];
+            }
+        }
+
+        return parsed;
+    }
+
+
+    /**
+     * GeminiAPIを直接呼び出します
+     * @param prompt 
+     * @returns 
+     */
+    private async callGemini(prompt: string): Promise<GenerateContentResult> {
+        if (!this.model) {
+            this.initialize();
+            if (!this.model) {
+                throw new Error('Gemini API Key is not configured. Please set docmate.apiKey in settings.');
+            }
+        }
+        return await this.model.generateContent(prompt);
+    }
+
+    /**
+     * Geminiからの文字列の返答からjson形式にパースする
+     * @param result geminiの返答
+     * @returns パース処理されたjson形式のデータ
+     */
+    private parseGeminiResponse(result: GenerateContentResult | string): GeminiResponse {
+        let responseText: string;
+        if (typeof result === "string") {
+            responseText = result;
+        } else {
+            responseText = result.response.text();
+        }
+        // Clean up potentially fenced JSON
+        const cleanJson = responseText.replace(/```json\n?|\n?```/g, '').trim();
+        return JSON.parse(cleanJson) as GeminiResponse;
+    }
+
+    /**
+     * GeminiAPIをプロキシサーバーを介して呼び出します
+     * @param prompt 
+     * @returns 
+     */
+    async fetchGeminiProxyServer(prompt: string): Promise<string> {
+        try {
+            let clientID = this.generateUUIDService.getClientId();
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'x-client-id': clientID
+            };
+
+            // プロキシサーバーのエンドポイントを読み込む
+            const proxyUrl = process.env.PROXY_URL;
+            console.log(proxyUrl);
+            if(!proxyUrl){
+                throw new Error("PROXY_*URL is not defined");
+            }
+
+            const res = await fetch(proxyUrl, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ prompt: prompt })
+            });
+
+            const data: any = await res.json();
+
+            if (res.status === 429) {
+                throw new Error(`制限エラー: ${data.error}`);
+            }
+
+            if (!res.ok) {
+                throw new Error(data.error ?? 'サーバーエラー');
+            }
+
+            return data.response;
+        } catch (err) {
+            throw err;
         }
     }
 }
