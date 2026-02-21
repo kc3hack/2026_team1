@@ -16,5 +16,59 @@
     "filename": "test.c",
     "deletefile": "a.out",
     "templatecode": "#include <stdio.h>\nint main(){ printf(\"Hello C\\n\"); return 0; }"
+  },
+  "python": {
+    "command": "python3 {file}",
+    "filename": "test.py",
+    "deletefile": "",
+    "templatecode": "print('Hello Python')"
+  },
+  "java": {
+    "command": "javac {file} && java Test",
+    "filename": "Test.java",
+    "deletefile": "Test.class",
+    "templatecode": "public class Test {\n  public static void main(String[] args) {\n    System.out.println(\"Hello Java\");\n  }\n}"
+  },
+  "cpp": {
+    "command": "g++ {file} -o a.out && ./a.out",
+    "filename": "test.cpp",
+    "deletefile": "a.out",
+    "templatecode": "#include <iostream>\nint main() { std::cout << \"Hello C++\" << std::endl; return 0; }"
+  },
+  "go": {
+    "command": "go run {file}",
+    "filename": "test.go",
+    "deletefile": "",
+    "templatecode": "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"Hello Go\") }"
+  },
+  "php": {
+    "command": "php {file}",
+    "filename": "test.php",
+    "deletefile": "",
+    "templatecode": "<?php\necho \"Hello PHP\\n\";\n?>"
+  },
+  "ruby": {
+    "command": "ruby {file}",
+    "filename": "test.rb",
+    "deletefile": "",
+    "templatecode": "puts 'Hello Ruby'"
+  },
+  "rust": {
+    "command": "rustc {file} && ./test",
+    "filename": "test.rs",
+    "deletefile": "test",
+    "templatecode": "fn main() {\n    println!(\"Hello Rust\");\n}"
+  },
+  "kotlin": {
+    "command": "kotlinc {file} -include-runtime -d test.jar && java -jar test.jar",
+    "filename": "test.kt",
+    "deletefile": "test.jar",
+    "templatecode": "fun main() {\n    println(\"Hello Kotlin\")\n}"
+  },
+  "dart": {
+    "command": "dart run {file}",
+    "filename": "test.dart",
+    "deletefile": "",
+    "templatecode": "void main() {\n  print('Hello Dart');\n}"
   }
 }
