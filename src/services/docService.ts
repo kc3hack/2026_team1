@@ -109,6 +109,15 @@ export class DocService {
                                 summary: `Documentation from DevDocs for ${language}`
                             };
                         }
+
+                        // FALLBACK: If React/JSX/TSX doesnt find the keyword in DevDocs (e.g. 'const', 'map'),
+                        // try searching MDN as a standard javascript/typescript query instead.
+                        if (language === 'javascriptreact' || language === 'typescriptreact' || language === 'vue') {
+                            console.log(`[Fallback] Keyword "${query}" not found in React/Vue docs. Searching MDN for JS/TS instead.`);
+                            // Call this same search method recursively, but pretending we are just 'javascript' (or 'typescript')
+                            return await this.search(query, language === 'typescriptreact' ? 'typescript' : 'javascript');
+                        }
+
                         return null;
                     } catch (error) {
                         console.error('Error searching DevDocs:', error);
