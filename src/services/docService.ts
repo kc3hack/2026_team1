@@ -32,7 +32,7 @@ export class DocService {
      * Search MDN for the given keyword/query.
      * Returns the top result or null if not found.
      */
-    async search(query: string): Promise<DocSearchResult | null> {
+    async search(query: string, language: string): Promise<DocSearchResult | null> {
         try {
             const searchUrl = `${MDN_SEARCH_API}?q=${encodeURIComponent(query)}`;
             console.log(`Searching MDN: ${searchUrl}`);
