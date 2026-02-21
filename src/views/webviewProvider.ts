@@ -191,10 +191,10 @@ export class DocMateWebviewProvider {
     }
 
     private generateCellHtml(example: ExampleData, index: number): string {
-    // サンプル毎に sandbox 用の root を作る。id に index を含める。
-    // また、initial code を data-* 属性で埋めて、sandbox_init.js 側で拾えるようにする。
-    const escapedCode = example.code.replace(/<\/script/g, '<\\/script').replace(/</g, '&lt;');
-    return `
+        // サンプル毎に sandbox 用の root を作る。id に index を含める。
+        // また、initial code を data-* 属性で埋めて、sandbox_init.js 側で拾えるようにする。
+        const escapedCode = example.code.replace(/<\/script/g, '<\\/script');
+        return `
         <div class="example-cell" id="example-cell-${index}">
         <div class="example-header">
             <strong>${example.title}</strong>
