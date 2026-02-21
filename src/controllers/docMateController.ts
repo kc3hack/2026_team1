@@ -21,6 +21,9 @@ export class DocMateController {
         this.geminiService = new GeminiService(this.generateUUIDService);
         this.executionService = new ExecutionService(context.extensionPath);
         this.cacheService = new CacheService();
+
+        // langConfig.json の promptHint を GeminiService に読み込ませる
+        this.geminiService.loadLangConfig(context.extensionPath);
     }
 
     async explain(
@@ -29,8 +32,7 @@ export class DocMateController {
         progress: vscode.Progress<{ message?: string; increment?: number }>
     ): Promise<{
         summary: string;
-        examples: { title: string; description:
-             string; code: string; executionOutput: string }[];
+        examples: { title: string; description: string; code: string; executionOutput: string }[];
         url: string;
     }> {
         // 1. Search
