@@ -47,14 +47,21 @@ Read the following documentation (in Markdown) and provide:
    - Each code block should be self-contained.
    - Do not use external libraries unless necessary.
 
-Output the result as a JSON object with keys:
-- "summary": string (Japanese summary)
-- "examples": array of objects, each with:
-  - "title": string (Short title of the example)
-  - "description": string (Brief explanation of what this example does)
-  - "code": string (The code itself)
+Please output ONLY a valid JSON object using the exact structure below. 
+Make sure that all double quotes and backslashes inside the "code" and "description" strings are properly escaped (e.g., \\" and \\\\) so that the JSON is completely valid.
 
-Do not include markdown code fences in the output, just raw JSON.
+{
+  "summary": "Concise summary in Japanese",
+  "examples": [
+    {
+      "title": "Short title",
+      "description": "Brief explanation",
+      "code": "Runnable sample code here"
+    }
+  ]
+}
+
+Return ONLY the raw JSON string. Do not wrap it in \`\`\`json ... \`\`\` blocks or add any other text.
 
 Documentation:
 ${markdown}
@@ -169,8 +176,30 @@ Do not include markdown code fences in the output, just raw JSON.
             responseText = result.response.text();
         }
         // Clean up potentially fenced JSON
-        const cleanJson = responseText.replace(/```json\n?|\n?```/g, '').trim();
-        return JSON.parse(cleanJson) as GeminiResponse;
+        const originalCleanJson = responseText.replace(/```json\n?|\n?```/g, '').trim();
+        let cleanJson = originalCleanJson;
+
+        try {
+            return JSON.parse(cleanJson) as GeminiResponse;
+        } catch (e) {
+            console.warn('JSON parsing failed. Attempting to sanitize invalid escape sequences...', e);
+
+            // 1. バックスラッシュのエラー救済 ( \0 や \x などを \\0 や \\x にエスケープ)
+            cleanJson = cleanJson.replace(/\\([^"\\\/bfnrtu])/g, '\\\\$1');
+            // AIがJSONの中で文字列を '" +\n "' で分割してしまった場合の救済 (前後にエスケーブされた引用符があるパターンにも対応)
+            cleanJson = cleanJson.replace(/(?<!\\)"\s*\+\s*\n?\s*"/g, '');
+
+
+            try {
+                return JSON.parse(cleanJson) as GeminiResponse;
+            } catch (fallbackError) {
+                console.error("Failed to parse Gemini JSON. True raw string:");
+                console.error("=======================");
+                console.error(originalCleanJson);
+                console.error("=======================");
+                throw fallbackError;
+            }
+        }
     }
 
     /**

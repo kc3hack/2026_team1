@@ -194,6 +194,18 @@ export class DocMateWebviewProvider {
         // サンプル毎に sandbox 用の root を作る。id に index を含める。
         // また、initial code を data-* 属性で埋めて、sandbox_init.js 側で拾えるようにする。
         const escapedCode = example.code.replace(/<\/script/g, '<\\/script');
+
+        // AIが不正なUnicode（サロゲートペアの片割れなど）を出力した場合、encodeURIComponentが "URI malformed" でクラッシュするため安全にエンコードする
+        let encodedCode = '';
+        try {
+            encodedCode = encodeURIComponent(escapedCode);
+        } catch (e) {
+            console.warn(`[Webview] URI malformed in example code (${example.title}), attempting fallback encode...`, e);
+            // 不正なUnicode文字を取り除いてから再度エンコードする
+            const sanitizedCode = escapedCode.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+            encodedCode = encodeURIComponent(sanitizedCode);
+        }
+
         return `
         <div class="example-cell" id="example-cell-${index}">
         <div class="example-header">
@@ -202,7 +214,7 @@ export class DocMateWebviewProvider {
         </div>
 
         <!-- Sandbox の埋め込み先 -->
-        <div id="sandbox-root-${index}" class="sandbox-embed" data-initial-code="${encodeURIComponent(escapedCode)}" data-index="${index}"></div>
+        <div id="sandbox-root-${index}" class="sandbox-embed" data-initial-code="${encodedCode}" data-index="${index}"></div>
 
         <!-- place for output fallback if needed -->
         <div id="sandbox-output-${index}" class="sandbox-output-fallback"></div>
