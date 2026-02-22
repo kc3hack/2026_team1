@@ -2,14 +2,16 @@
   "name": "docmate",
   "displayName": "DocMate",
   "description": "AI Documentation Assistant",
-  "version": "0.0.1",
+  "version": "0.0.4",
   "engines": {
     "vscode": "^1.97.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "*"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -24,6 +26,10 @@
       {
         "command": "docmate.downloadProjectDoc",
         "title": "DocMate: Download Project Document"
+      },
+      {
+        "command": "docmate.explainFile",
+        "title": "DocMate: AIで構造と依存関係を解説"
       }
     ],
     "configuration": {
@@ -73,6 +79,12 @@
         },
         {
           "command": "docmate.downloadProjectDoc",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "docmate.explainFile",
           "group": "navigation"
         }
       ]

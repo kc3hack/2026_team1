@@ -15,10 +15,8 @@ export class DocMateController {
     private geminiService: GeminiService;
     private executionService: ExecutionService;
     private generateProjectDocumentService: GenerateProjectDocumentService;
-
     private generateUUIDService: GenerateUUIDService;
     private cacheService: CacheService;
-
     private maxRetries = 5;
 
     constructor(context: vscode.ExtensionContext) {
@@ -30,10 +28,13 @@ export class DocMateController {
         this.cacheService = new CacheService();
         this.generateProjectDocumentService = new GenerateProjectDocumentService(context, this.geminiService, this.executionService);
         this.generateProjectDocumentService.prepare();
+        // langConfig.json の promptHint を GeminiService に読み込ませる
+        this.geminiService.loadLangConfig(context.extensionPath);
     }
 
     async explain(
         keyword: string,
+        language: string,
         progress: vscode.Progress<{ message?: string; increment?: number }>
     ): Promise<{
         summary: string;
@@ -41,8 +42,8 @@ export class DocMateController {
         url: string;
     }> {
         // 1. Search
-        progress.report({ message: `Searching MDN for "${keyword}"...` });
-        const searchResult = await this.docService.search(keyword);
+        progress.report({ message: `Searching documentation for "${keyword}"...` });
+        const searchResult = await this.docService.search(keyword, language);
         if (!searchResult) {
             throw new Error(`No documentation found for "${keyword}"`);
         }
@@ -61,11 +62,12 @@ export class DocMateController {
 
         // 3. Fetch Content
         progress.report({ message: `Fetching documentation...` });
-        const markdown = await this.docService.fetchContent(searchResult.url);
+        const fetchUrl = searchResult.htmlUrl || searchResult.url;
+        const markdown = await this.docService.fetchContent(fetchUrl);
 
         // 4. Summarize & Generate Code
         progress.report({ message: `Summarizing and generating code with Gemini...` });
-        const geminiResponse = await this.geminiService.summarize(markdown);
+        const geminiResponse = await this.geminiService.summarize(markdown, language);
 
         // 5. Initial Execution (Best Effort)
         progress.report({ message: `Executing sample codes...` });
@@ -234,7 +236,7 @@ export class DocMateController {
                     }
                 );
                 const webviewProvider = new DocMateWebviewProvider(explainPanel, this.context.extensionUri, this.context);
-                webviewProvider.update(summary, examples, '');
+                webviewProvider.update(summary, examples, '', keyword);
 
                 // コード実行メッセージを処理
                 explainPanel.webview.onDidReceiveMessage(async (msg) => {

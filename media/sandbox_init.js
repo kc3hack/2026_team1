@@ -26,6 +26,171 @@
   const cells = new Map();
   window.__sandbox_cells = cells;
 
+  /** 現在実行中のセルの index を記録する（stream/exit を正しいセルに届けるため） */
+  let activeIndex = null;
+
+  // ── エディタ高さ計算ユーティリティ ──────────────────────────
+  //  CSS の --md-editor-* トークンと合わせる
+  const EDITOR_LINE_HEIGHT = 24;   // px  (monaco fontSize:13 + 余白)
+  const EDITOR_PADDING_V   = 6;    // px  (上下パディング合計の半分)
+  const EDITOR_MIN_LINES   = 4;
+  const EDITOR_MAX_LINES   = 30;
+
+  /**
+   * コード文字列の行数からエディタの最適な高さ (px) を計算する。
+   * min: EDITOR_MIN_LINES, max: EDITOR_MAX_LINES でクランプ。
+   */
+  function calcEditorHeight(code, isModal) {
+    const lines = (code || '').split('\n').length;
+    const clamped = isModal ? Math.max(EDITOR_MIN_LINES, lines) : Math.max(EDITOR_MIN_LINES, Math.min(EDITOR_MAX_LINES, lines))
+    return clamped * EDITOR_LINE_HEIGHT + EDITOR_PADDING_V * 2;
+  }
+
+  /**
+   * エディタコンテナの高さを更新し、Monaco の layout() を呼んで再描画させる。
+   * @param {HTMLElement} containerEl  .sb-editor 要素
+   * @param {object|null} monacoRef    { editor } | null
+   * @param {string}      code         現在のコード文字列
+   */
+  /**
+   * エディタコンテナの高さを更新する。
+   * isModal が true の場合は常に MAX 行数の高さを使う。
+   */
+  function updateEditorHeight(containerEl, monacoRef, code, isModal) {
+    if (!containerEl) return;
+    const h = calcEditorHeight(code, isModal);
+    containerEl.style.height = h + 'px';
+    // Monaco に新しいサイズを伝える
+    if (monacoRef && monacoRef.editor) {
+      try { monacoRef.editor.layout(); } catch (_) {}
+    }
+  }
+
+  // ── iframe サンドボックス ────────────────────────────────────
+
+  /**
+   * executionType に応じて iframe に描画する srcdoc を生成する。
+   * @param {string} code  エディタ内のコード
+   * @param {string} executionType  "iframe-html" | "iframe-react" | "iframe-vue"
+   * @returns {string} srcdoc HTML 文字列
+   */
+  function buildSrcdoc(code, executionType) {
+    switch (executionType) {
+
+      // ── HTML / CSS ────────────────────────────────────────────
+      // CSS の場合は AI が完全な HTML+<style> として出力するため、
+      // html と同じパスで処理する。
+      case 'iframe-html':
+        return code;
+
+      // ── React (JSX / TSX) ─────────────────────────────────────
+      // Babel スタンドアロン + React + ReactDOM を CDN から読み込み、
+      // ユーザーコードを type="text/babel" スクリプトとして埋め込む。
+      // ユーザーは ReactDOM.createRoot(...).render(<App />) まで書く想定。
+      case 'iframe-react': {
+        // コード中の </script> を壊さないようエスケープ
+        const escaped = code.replace(/<\/script/gi, '<\\/script');
+        return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; margin: 16px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.min.js"></script>
+  <!-- Babel スタンドアロン（JSX / TSX トランスパイル） -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="react,typescript">
+${escaped}
+  </script>
+</body>
+</html>`;
+      }
+
+      // ── Vue 3 ─────────────────────────────────────────────────
+      // Vue CDN を読み込み後、ユーザーコードを通常スクリプトとして実行。
+      // ユーザーは createApp(...).mount('#app') まで書く想定。
+      case 'iframe-vue': {
+        const escaped = code.replace(/<\/script/gi, '<\\/script');
+        return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; margin: 16px; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- Vue 3 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.min.js"></script>
+
+  <script>
+${escaped}
+  </script>
+</body>
+</html>`;
+      }
+
+      default:
+        return `<pre style="padding:16px;font-family:monospace;">${
+          code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        }</pre>`;
+    }
+  }
+
+  /**
+   * executionType が iframe 系かどうかを判定する。
+   * @param {string} executionType
+   * @returns {boolean}
+   */
+  function isIframeType(executionType) {
+    return executionType === 'iframe-html'
+      || executionType === 'iframe-react'
+      || executionType === 'iframe-vue';
+  }
+
+  /**
+   * output エリアに iframe を描画（または更新）する。
+   * @param {HTMLElement} outputPre  .output-area 要素
+   * @param {string}      srcdoc     表示する HTML 文字列
+   * @param {boolean}     isModal    モーダル内かどうか（高さ調整用）
+   */
+  function renderIframe(outputPre, srcdoc, isModal) {
+    // output-area を iframe コンテナとして流用する
+    // 既存の iframe があれば再利用、なければ新規作成
+    let iframe = outputPre.querySelector('iframe.sb-preview-iframe');
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.className = 'sb-preview-iframe';
+      // allow-scripts のみ許可。allow-same-origin を付けると
+      // iframe 内から親 document へのアクセスが可能になりセキュリティリスクになるため付けない。
+      iframe.setAttribute('sandbox', 'allow-scripts');
+      iframe.style.cssText = [
+        'width:100%',
+        'border:none',
+        'display:block',
+        isModal ? 'height:480px' : 'height:300px',
+        'background:#fff',
+        'border-radius:0 0 4px 4px',
+      ].join(';');
+      // 既存のテキストノードを消して iframe を挿入
+      outputPre.textContent = '';
+      outputPre.appendChild(iframe);
+    }
+    iframe.srcdoc = srcdoc;
+  }
+
   // --- helper utilities ---
   function findEmbedRootsIn(node = document) {
     const roots = [];
@@ -52,13 +217,15 @@
 
   // --- create UI per root ---
   function initCell(rootEl) {
-    let monacoInstance = null;
+    // monacoRef はオブジェクトで持つことで updateEditorHeight から参照できる
+    const monacoRef = { editor: null, model: null };
 
     if (!rootEl) return;
     const existing = rootEl.getAttribute('data-sandbox-initialized');
     if (existing === '1') return;
 
-    const index = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
+    const index   = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
+    const isModal = rootEl.getAttribute('data-is-modal') === '1';
     rootEl.setAttribute('data-sandbox-initialized', '1');
 
     const initialRaw = rootEl.getAttribute('data-initial-code') || '';
@@ -89,12 +256,12 @@
     `;
 
     // UI refs
-    const langSelect = rootEl.querySelector('.sb-langSelect');
-    const runBtn = rootEl.querySelector('.sb-runBtn');
-    const loadBtn = rootEl.querySelector('.sb-loadBtn');
+    const langSelect  = rootEl.querySelector('.sb-langSelect');
+    const runBtn      = rootEl.querySelector('.sb-runBtn');
+    const loadBtn     = rootEl.querySelector('.sb-loadBtn');
     const execTextarea = rootEl.querySelector('.sb-execCommand');
     const editorContainer = rootEl.querySelector('.sb-editor');
-    const outputPre = rootEl.querySelector('.output-area');
+    const outputPre   = rootEl.querySelector('.output-area');
 
     // populate languages
     const LANG_CONFIG = window.LANG_CONFIG || {};
@@ -105,22 +272,57 @@
       o.value = l; o.textContent = l;
       langSelect.appendChild(o);
     });
-    const curLang = langSelect.value || langs[0];
-    execTextarea.value = (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].command) || '';
 
-    // 言語切り替え時にコマンドも更新
+    // 言語マッピング（VSCode languageId → langConfig キー）
+    let targetLang = window.CURRENT_LANG || langs[0];
+    const langMap = {
+      'typescriptreact': 'typescriptreact',
+      'javascriptreact': 'javascriptreact',
+    };
+    targetLang = langMap[targetLang] || targetLang;
+
+    if (!LANG_CONFIG[targetLang]) {
+      targetLang = langs[0];
+    }
+    langSelect.value = targetLang;
+
+    /**
+     * 現在選択されている言語の executionType を返す。
+     */
+    function currentExecutionType() {
+      const lang = langSelect.value || langs[0];
+      return (LANG_CONFIG[lang] && LANG_CONFIG[lang].executionType) || 'terminal';
+    }
+
+    /**
+     * executionType に応じて cmd-area と output エリアの表示を切り替える。
+     * iframe 系の場合はコマンド入力欄を隠す。
+     */
+    function applyExecutionTypeUI() {
+      const execType = currentExecutionType();
+      if (isIframeType(execType)) {
+        cmdArea.style.display = 'none';
+      } else {
+        cmdArea.style.display = '';
+        const lang = langSelect.value || langs[0];
+        execTextarea.value = (LANG_CONFIG[lang] && LANG_CONFIG[lang].command) || '';
+      }
+    }
+
+    // 初期適用
+    applyExecutionTypeUI();
+
+    // 言語切り替え時
     langSelect.addEventListener('change', () => {
       const selected = langSelect.value;
       execTextarea.value = (LANG_CONFIG[selected] && LANG_CONFIG[selected].command) || '';
     });
 
     // cell object
-    const preGeneratedOutput = decodeInitialCode(rootEl.getAttribute('data-execution-output') || '');
     const cellObj = {
       rootEl,
       index: String(index),
       outputEl: outputPre,
-      preGeneratedOutput, // プリ生成された実行結果を保持
       append(s) {
         if (outputPre) {
           outputPre.textContent += String(s);
@@ -130,17 +332,13 @@
     };
     cells.set(String(index), cellObj);
 
-    // プリ生成された実行結果があれば初期表示
-    if (preGeneratedOutput && outputPre) {
-      outputPre.textContent = preGeneratedOutput;
-    }
-
     // ---- Load Template（初期コードに戻す） ----
     loadBtn.addEventListener('click', () => {
       if (monacoInstance && monacoInstance.model) {
-        try { monacoInstance.model.setValue(initialCode); } catch (_) { }
+        try { monacoInstance.model.setValue(initialCode); } catch (_) {}
       } else {
         editorContainer.textContent = initialCode;
+        updateEditorHeight(editorContainer, null, initialCode, isModal);
       }
     });
 
@@ -148,10 +346,20 @@
     runBtn.addEventListener('click', () => {
       let code = '';
       if (monacoInstance && monacoInstance.model) {
-        try { code = monacoInstance.model.getValue(); } catch (_) { }
+        try { code = monacoInstance.model.getValue(); } catch (_) {}
       }
       if (!code) code = editorContainer.textContent || '';
 
+      const execType = currentExecutionType();
+
+      // ── iframe 系: ブラウザ内でそのまま描画 ──────────────────
+      if (isIframeType(execType)) {
+        const srcdoc = buildSrcdoc(code, execType);
+        renderIframe(outputPre, srcdoc, isModal);
+        return; // extension への postMessage は不要
+      }
+
+      // ── terminal 系: 既存フロー ───────────────────────────────
       const execCommand = execTextarea ? execTextarea.value : '';
 
       if (outputPre) outputPre.textContent = '';
@@ -166,53 +374,98 @@
         execCommand,
         index
       };
+      activeIndex = String(index);
       if (vscodeApi) vscodeApi.postMessage(payload);
     });
 
     // ---- Monaco loader ----
+    const curLang = langSelect.value || langs[0];
     tryLoadMonaco(editorContainer, initialCode, curLang)
       .then(res => {
-        monacoInstance = res;
+        monacoRef.editor = res.editor;
+        monacoRef.model  = res.model;
+
+        // 初期値をセット
         try {
-          if (monacoInstance && monacoInstance.model) {
-            const val = initialCode
-              || (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].templatecode)
-              || '';
-            monacoInstance.model.setValue(val);
-          }
+          const val = initialCode
+            || (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].templatecode)
+            || '';
+          monacoRef.model.setValue(val);
+          // Monaco 描画後に再度高さ調整
+          updateEditorHeight(editorContainer, monacoRef, val, isModal);
         } catch (e) {
           console.warn('[sandbox_init] failed to set model value:', e);
         }
+
+        // ── コンテンツ変更時に高さをリアルタイム更新 ──────────
+        monacoRef.model.onDidChangeContent(() => {
+          try {
+            const code = monacoRef.model.getValue();
+            updateEditorHeight(editorContainer, monacoRef, code, isModal);
+          } catch (_) {}
+        });
       })
       .catch(e => {
         console.warn('[sandbox_init] Monaco load failed (non-fatal):', e);
       });
+    // ── ヘッダークリックでモーダルを開くリスナーを登録 ──
+    attachHeaderClickListener(rootEl);
+
+    // cell object
+    const cellObj = {
+      rootEl,
+      index: String(index),
+      outputEl: outputPre,
+      append(s) {
+        // iframe モードの場合はテキスト追記しない
+        if (outputPre && !outputPre.querySelector('iframe.sb-preview-iframe')) {
+          outputPre.textContent += String(s);
+          outputPre.scrollTop = outputPre.scrollHeight;
+        }
+      }
+    };
+    cells.set(String(index), cellObj);
   }
 
-  // Monaco loader — overflow:hidden コンテナでも正しくレイアウトされるよう
-  // automaticLayout: true にしてリサイズ対応
+  // Monaco loader
   function tryLoadMonaco(containerEl, code, lang) {
     return new Promise((resolve, reject) => {
       if (!containerEl) return reject(new Error('no container'));
 
+      // VSCode の languageId → Monaco languageId マッピング
+      const monacoLangMap = {
+        'javascriptreact': 'javascript',
+        'typescriptreact': 'typescript',
+        'vue': 'html', // vue SFC の疑似ハイライト
+        'css': 'html',
+        'html': 'html',
+      };
+
       function createEditor(mon) {
-        const monLang = lang === 'typescript' ? 'typescript' : 'javascript';
+        const supported = ['javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'go', 'php', 'ruby', 'rust', 'html', 'css', 'json', 'shell', 'dart', 'kotlin'];
+        const rawLang = monacoLangMap[lang] || lang;
+        const monLang = supported.includes(rawLang) ? rawLang : 'javascript';
         const model = mon.editor.createModel(code || '', monLang);
         const editor = mon.editor.create(containerEl, {
           model,
-          automaticLayout: true,   // コンテナリサイズに追従
+          automaticLayout: true,
           theme: 'vs-dark',
           fontSize: 13,
+          lineHeight: 20,
           lineNumbers: 'on',
-          minimap: { enabled: false },   // ミニマップ非表示でスクロール余白を減らす
-          scrollBeyondLastLine: false,    // ← 最終行以降の余分スクロールを無効化
-          overviewRulerLanes: 0,          // 右端の概観ルーラーを非表示
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          overviewRulerLanes: 0,
           scrollbar: {
-            verticalScrollbarSize: 8,
-            horizontalScrollbarSize: 8,
-            alwaysConsumeMouseWheel: false, // 外側へのホイール伝播を許可
+            verticalScrollbarSize: 6,
+            horizontalScrollbarSize: 6,
+            alwaysConsumeMouseWheel: false,
+            // 高さが可変なのでスクロールバーを非表示にする
+            vertical: 'hidden',
           },
           padding: { top: 8, bottom: 8 },
+          // コンテナ高さ = コード行数なのでスクロールなしで全行表示できる
+          wordWrap: 'on',
         });
         return { mon, model, editor };
       }
@@ -292,11 +545,125 @@
     setTimeout(() => { try { window.__sandbox_init(); } catch (e) { } }, 500);
   }
 
+  // ── モーダルシステム ────────────────────────────────────────
+  //
+  // .example-header クリック → モーダルを開く
+  // モーダル内に新規サンドボックスを初期化し、元セルのコードを引き継ぐ
+  // オーバーレイクリック / Esc / 閉じるボタン → モーダルを閉じる
+  // -------------------------------------------------------
+
+  /** モーダルオーバーレイ DOM（1つだけ生成して使い回す） */
+  let modalOverlay = null;
+  let modalCard    = null;
+
+  function ensureModal() {
+    if (modalOverlay) return;
+
+    modalOverlay = document.createElement('div');
+    modalOverlay.className = 'dm-modal-overlay';
+
+    modalCard = document.createElement('div');
+    modalCard.className = 'dm-modal-card';
+
+    modalOverlay.appendChild(modalCard);
+    document.body.appendChild(modalOverlay);
+
+    // オーバーレイ（カード外）クリックで閉じる
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+
+    // Esc キーで閉じる
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+  }
+
+  function openModal(sourceRoot) {
+    ensureModal();
+
+    // 元セルからタイトル・説明・初期コードを取得
+    const cell     = sourceRoot.closest('.example-cell');
+    const titleEl  = cell ? cell.querySelector('.example-header strong')      : null;
+    const descEl   = cell ? cell.querySelector('.example-header .description') : null;
+    const title    = titleEl ? titleEl.textContent : '';
+    const desc     = descEl  ? descEl.textContent  : '';
+    const initialRaw = sourceRoot.getAttribute('data-initial-code') || '';
+    const srcIndex   = sourceRoot.getAttribute('data-index') || '0';
+    const modalIndex = `modal-${srcIndex}`;
+
+    // カード内 HTML を構築
+    // .dm-modal-body がスクロールコンテナになる
+    modalCard.innerHTML = `
+      <div class="dm-modal-header">
+        <div class="dm-modal-header-text">
+          <strong>${title}</strong>
+          ${desc ? `<div class="description">${desc}</div>` : ''}
+        </div>
+        <button class="dm-modal-close" title="閉じる">&#x2715;</button>
+      </div>
+      <div class="dm-modal-body">
+        <div
+          id="sandbox-root-${modalIndex}"
+          class="sandbox-embed"
+          data-initial-code="${initialRaw}"
+          data-index="${modalIndex}"
+          data-is-modal="1"
+        ></div>
+      </div>
+    `;
+
+    // 閉じるボタン
+    modalCard.querySelector('.dm-modal-close').addEventListener('click', closeModal);
+
+    // モーダルを表示してからサンドボックスを初期化
+    modalOverlay.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+
+    // 少し遅延させて DOM が確定してから初期化
+    requestAnimationFrame(() => {
+      const newRoot = document.getElementById(`sandbox-root-${modalIndex}`);
+      if (newRoot) initCell(newRoot);
+    });
+  }
+
+  function closeModal() {
+    if (!modalOverlay) return;
+    modalOverlay.classList.remove('is-open');
+    document.body.style.overflow = '';
+
+    // モーダル内の Monaco インスタンスをクリーンアップ（メモリリーク防止）
+    if (modalCard) {
+      const idx = (() => {
+        const el = modalCard.querySelector('[data-index]');
+        return el ? el.getAttribute('data-index') : null;
+      })();
+      if (idx) cells.delete(String(idx));
+      try {
+        if (window.monaco) {
+          window.monaco.editor.getModels().forEach(m => {
+            if (m.uri.toString().includes('modal')) m.dispose();
+          });
+        }
+      } catch (_) {}
+      modalCard.innerHTML = '';
+    }
+  }
+
+  /** .example-header へのクリックリスナーを登録（initCell 完了後に呼ぶ） */
+  function attachHeaderClickListener(rootEl) {
+    const cell   = rootEl.closest('.example-cell');
+    if (!cell) return;
+    const header = cell.querySelector('.example-header');
+    if (!header || header.dataset.dmModal) return;
+    header.dataset.dmModal = '1';
+    header.addEventListener('click', () => openModal(rootEl));
+  }
+
   // ---- メッセージルーティング（extension → webview） ----
   window.addEventListener('message', (ev) => {
     const msg = ev.data || {};
 
-    // run 完了後にボタンを復帰させる
     function restoreRunBtn(index) {
       const root = document.getElementById(`sandbox-root-${index}`)
         || document.querySelector(`[data-index="${index}"]`);
@@ -320,35 +687,28 @@
       return;
     }
     if (msg.kind === 'stream') {
-      if (msg.stdout) cells.forEach(c => c.append(msg.stdout));
-      if (msg.stderr) cells.forEach(c => c.append(msg.stderr));
+      const ac = activeIndex !== null ? cells.get(activeIndex) : null;
+      if (ac) {
+        if (msg.stdout) ac.append(msg.stdout);
+        if (msg.stderr) ac.append(msg.stderr);
+      }
       return;
     }
     if (msg.kind === 'exit') {
-      const exitCode = msg.code;
       cells.forEach(c => c.append(`\n[process exited, code=${msg.code}, signal=${msg.signal}]\n`));
-      // 実行失敗時はプリ生成された出力にフォールバック + エラーログも表示
-      if (exitCode !== 0) {
-        cells.forEach(c => {
-          if (c.preGeneratedOutput && c.outputEl) {
-            const errorLog = c.outputEl.textContent || '';
-            c.outputEl.textContent = c.preGeneratedOutput
-              + '\n\n(ℹ️ ライブ実行は失敗したため、AIによる期待出力を表示しています)'
-              + '\n\n--- エラーログ ---\n'
-              + errorLog;
-          }
-        });
-      }
       cells.forEach((c, idx) => restoreRunBtn(idx));
       return;
     }
     if (msg.kind === 'status') {
-      cells.forEach(c => c.append(`[status] ${msg.text}\n`));
+      const ac = activeIndex !== null ? cells.get(activeIndex) : null;
+      if (ac) ac.append(`[status] ${msg.text}\n`);
       return;
     }
     if (msg.kind === 'error' && msg.text) {
-      cells.forEach(c => c.append(`[error] ${msg.text}\n`));
-      cells.forEach((c, idx) => restoreRunBtn(idx));
+      const ac = activeIndex !== null ? cells.get(activeIndex) : null;
+      if (ac) ac.append(`[error] ${msg.text}\n`);
+      if (activeIndex !== null) restoreRunBtn(activeIndex);
+      activeIndex = null;
       return;
     }
   });
