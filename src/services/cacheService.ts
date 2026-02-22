@@ -95,6 +95,7 @@ export class CacheService {
     }
 
     try {
+      fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });
       fs.writeFileSync(this.cachePath, JSON.stringify(all, null, 2), "utf8");
       console.log(`CacheService: 保存しました → ${this.cachePath}`);
     } catch (e) {
