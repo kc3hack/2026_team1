@@ -32,8 +32,8 @@ export class DocMateWebviewProvider {
         let text = "";
         const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         for (let i = 0; i < 32; i++) {
-                text += possible.charAt(Math.floor(Math.random() * possible.length));
-            }
+            text += possible.charAt(Math.floor(Math.random() * possible.length));
+        }
         return text;
     }
 
@@ -193,7 +193,7 @@ export class DocMateWebviewProvider {
     private generateCellHtml(example: ExampleData, index: number): string {
         // サンプル毎に sandbox 用の root を作る。id に index を含める。
         // また、initial code を data-* 属性で埋めて、sandbox_init.js 側で拾えるようにする。
-        const escapedCode = example.code.replace(/<\/script/g, '<\\/script');
+        const escapedCode = example.code.replace(/<\/script/g, '<\\/script').replace(/</g, '&lt;');
 
         // AIが不正なUnicode（サロゲートペアの片割れなど）を出力した場合、encodeURIComponentが "URI malformed" でクラッシュするため安全にエンコードする
         let encodedCode = '';
@@ -214,7 +214,7 @@ export class DocMateWebviewProvider {
         </div>
 
         <!-- Sandbox の埋め込み先 -->
-        <div id="sandbox-root-${index}" class="sandbox-embed" data-initial-code="${encodedCode}" data-index="${index}"></div>
+        <div id="sandbox-root-${index}" class="sandbox-embed" data-initial-code="${encodeURIComponent(escapedCode)}" data-index="${index}" data-execution-output="${encodeURIComponent(example.executionOutput || '')}"></div>
 
         <!-- place for output fallback if needed -->
         <div id="sandbox-output-${index}" class="sandbox-output-fallback"></div>

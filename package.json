@@ -20,6 +20,14 @@
         "title": "DocMate: Explain"
       },
       {
+        "command": "docmate.generateProjectDoc",
+        "title": "DocMate: Generate Project Document"
+      },
+      {
+        "command": "docmate.downloadProjectDoc",
+        "title": "DocMate: Download Project Document"
+      },
+      {
         "command": "docmate.explainFile",
         "title": "DocMate: AIで構造と依存関係を解説"
       }
@@ -43,6 +51,34 @@
       "editor/context": [
         {
           "command": "docmate.explain",
+          "group": "navigation"
+        },
+        {
+          "command": "docmate.generateProjectDoc",
+          "group": "navigation"
+        },
+        {
+          "command": "docmate.downloadProjectDoc",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "docmate.generateProjectDoc",
+          "group": "navigation"
+        },
+        {
+          "command": "docmate.downloadProjectDoc",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "docmate.generateProjectDoc",
+          "group": "navigation"
+        },
+        {
+          "command": "docmate.downloadProjectDoc",
           "group": "navigation"
         }
       ],
@@ -82,6 +118,7 @@
     "dotenv": "^17.3.1",
     "jsdom": "^24.0.0",
     "marked": "^4.3.0",
+    "p-limit": "^3.1.0",
     "turndown": "^7.2.0",
     "uuid": "^8.3.2"
   },
