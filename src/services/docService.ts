@@ -25,6 +25,7 @@ const devDocsSlugs: Record<string, string> = {
 export interface DocSearchResult {
     title: string;
     url: string;
+    htmlUrl?: string;
     summary: string;
 }
 
@@ -73,6 +74,7 @@ export class DocService {
                         return {
                             title: topDoc.title,
                             url: `${MDN_BASE_URL}${topDoc.mdn_url}`,
+                            htmlUrl: `${MDN_BASE_URL}${topDoc.mdn_url}`,
                             summary: topDoc.summary
                         };
                     }
@@ -101,11 +103,14 @@ export class DocService {
 
                         if (entry) {
                             const [pagePath, hash] = entry.path.split('#');
-                            // We construct a special URL that includes the hash so fetchContent can extract the specific part
-                            const docUrl = `https://documents.devdocs.io/${slug}/${pagePath}.html${hash ? '#' + hash : ''}`;
+                            // ユーザーが見るURL
+                            const userUrl = `https://devdocs.io/${slug}/${pagePath}${hash ? '#' + hash : ''}`;
+                            // AIに投げる用のHTML
+                            const htmlUrl = `https://documents.devdocs.io/${slug}/${pagePath}.html${hash ? '#' + hash : ''}`;
                             return {
                                 title: entry.name,
-                                url: docUrl,
+                                url: userUrl,
+                                htmlUrl: htmlUrl,
                                 summary: `Documentation from DevDocs for ${language}`
                             };
                         }

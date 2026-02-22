@@ -56,7 +56,8 @@ export class DocMateController {
 
         // 3. Fetch Content
         progress.report({ message: `Fetching documentation...` });
-        const markdown = await this.docService.fetchContent(searchResult.url);
+        const fetchUrl = searchResult.htmlUrl || searchResult.url;
+        const markdown = await this.docService.fetchContent(fetchUrl);
 
         // 4. Summarize & Generate Code
         progress.report({ message: `Summarizing and generating code with Gemini...` });
