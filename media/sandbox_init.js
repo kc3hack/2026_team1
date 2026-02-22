@@ -160,21 +160,11 @@ ${escaped}
       || executionType === 'iframe-vue';
   }
 
-  /**
-   * output エリアに iframe を描画（または更新）する。
-   * @param {HTMLElement} outputPre  .output-area 要素
-   * @param {string}      srcdoc     表示する HTML 文字列
-   * @param {boolean}     isModal    モーダル内かどうか（高さ調整用）
-   */
   function renderIframe(outputPre, srcdoc, isModal) {
-    // output-area を iframe コンテナとして流用する
-    // 既存の iframe があれば再利用、なければ新規作成
     let iframe = outputPre.querySelector('iframe.sb-preview-iframe');
     if (!iframe) {
       iframe = document.createElement('iframe');
       iframe.className = 'sb-preview-iframe';
-      // allow-scripts のみ許可。allow-same-origin を付けると
-      // iframe 内から親 document へのアクセスが可能になりセキュリティリスクになるため付けない。
       iframe.setAttribute('sandbox', 'allow-scripts');
       iframe.style.cssText = [
         'width:100%',
@@ -184,7 +174,6 @@ ${escaped}
         'background:#fff',
         'border-radius:0 0 4px 4px',
       ].join(';');
-      // 既存のテキストノードを消して iframe を挿入
       outputPre.textContent = '';
       outputPre.appendChild(iframe);
     }
@@ -256,12 +245,13 @@ ${escaped}
     `;
 
     // UI refs
-    const langSelect  = rootEl.querySelector('.sb-langSelect');
-    const runBtn      = rootEl.querySelector('.sb-runBtn');
-    const loadBtn     = rootEl.querySelector('.sb-loadBtn');
-    const execTextarea = rootEl.querySelector('.sb-execCommand');
+    const langSelect      = rootEl.querySelector('.sb-langSelect');
+    const runBtn          = rootEl.querySelector('.sb-runBtn');
+    const loadBtn         = rootEl.querySelector('.sb-loadBtn');
+    const execTextarea    = rootEl.querySelector('.sb-execCommand');
     const editorContainer = rootEl.querySelector('.sb-editor');
-    const outputPre   = rootEl.querySelector('.output-area');
+    const outputPre       = rootEl.querySelector('.output-area');
+    const cmdArea         = rootEl.querySelector('.sb-cmd-area'); // ← 追加：cmdArea を正しく取得
 
     // populate languages
     const LANG_CONFIG = window.LANG_CONFIG || {};
@@ -286,18 +276,11 @@ ${escaped}
     }
     langSelect.value = targetLang;
 
-    /**
-     * 現在選択されている言語の executionType を返す。
-     */
     function currentExecutionType() {
       const lang = langSelect.value || langs[0];
       return (LANG_CONFIG[lang] && LANG_CONFIG[lang].executionType) || 'terminal';
     }
 
-    /**
-     * executionType に応じて cmd-area と output エリアの表示を切り替える。
-     * iframe 系の場合はコマンド入力欄を隠す。
-     */
     function applyExecutionTypeUI() {
       const execType = currentExecutionType();
       if (isIframeType(execType)) {
@@ -316,15 +299,17 @@ ${escaped}
     langSelect.addEventListener('change', () => {
       const selected = langSelect.value;
       execTextarea.value = (LANG_CONFIG[selected] && LANG_CONFIG[selected].command) || '';
+      applyExecutionTypeUI();
     });
 
-    // cell object
+    // cell object（1つだけ定義）
     const cellObj = {
       rootEl,
       index: String(index),
       outputEl: outputPre,
       append(s) {
-        if (outputPre) {
+        // iframe モードの場合はテキスト追記しない
+        if (outputPre && !outputPre.querySelector('iframe.sb-preview-iframe')) {
           outputPre.textContent += String(s);
           outputPre.scrollTop = outputPre.scrollHeight;
         }
@@ -334,8 +319,8 @@ ${escaped}
 
     // ---- Load Template（初期コードに戻す） ----
     loadBtn.addEventListener('click', () => {
-      if (monacoInstance && monacoInstance.model) {
-        try { monacoInstance.model.setValue(initialCode); } catch (_) {}
+      if (monacoRef && monacoRef.model) {
+        try { monacoRef.model.setValue(initialCode); } catch (_) {}
       } else {
         editorContainer.textContent = initialCode;
         updateEditorHeight(editorContainer, null, initialCode, isModal);
@@ -345,8 +330,8 @@ ${escaped}
     // ---- Run ----
     runBtn.addEventListener('click', () => {
       let code = '';
-      if (monacoInstance && monacoInstance.model) {
-        try { code = monacoInstance.model.getValue(); } catch (_) {}
+      if (monacoRef && monacoRef.model) {
+        try { code = monacoRef.model.getValue(); } catch (_) {}
       }
       if (!code) code = editorContainer.textContent || '';
 
@@ -356,7 +341,7 @@ ${escaped}
       if (isIframeType(execType)) {
         const srcdoc = buildSrcdoc(code, execType);
         renderIframe(outputPre, srcdoc, isModal);
-        return; // extension への postMessage は不要
+        return;
       }
 
       // ── terminal 系: 既存フロー ───────────────────────────────
@@ -385,19 +370,16 @@ ${escaped}
         monacoRef.editor = res.editor;
         monacoRef.model  = res.model;
 
-        // 初期値をセット
         try {
           const val = initialCode
             || (LANG_CONFIG[curLang] && LANG_CONFIG[curLang].templatecode)
             || '';
           monacoRef.model.setValue(val);
-          // Monaco 描画後に再度高さ調整
           updateEditorHeight(editorContainer, monacoRef, val, isModal);
         } catch (e) {
           console.warn('[sandbox_init] failed to set model value:', e);
         }
 
-        // ── コンテンツ変更時に高さをリアルタイム更新 ──────────
         monacoRef.model.onDidChangeContent(() => {
           try {
             const code = monacoRef.model.getValue();
@@ -408,23 +390,9 @@ ${escaped}
       .catch(e => {
         console.warn('[sandbox_init] Monaco load failed (non-fatal):', e);
       });
+
     // ── ヘッダークリックでモーダルを開くリスナーを登録 ──
     attachHeaderClickListener(rootEl);
-
-    // cell object
-    const cellObj = {
-      rootEl,
-      index: String(index),
-      outputEl: outputPre,
-      append(s) {
-        // iframe モードの場合はテキスト追記しない
-        if (outputPre && !outputPre.querySelector('iframe.sb-preview-iframe')) {
-          outputPre.textContent += String(s);
-          outputPre.scrollTop = outputPre.scrollHeight;
-        }
-      }
-    };
-    cells.set(String(index), cellObj);
   }
 
   // Monaco loader
@@ -432,11 +400,10 @@ ${escaped}
     return new Promise((resolve, reject) => {
       if (!containerEl) return reject(new Error('no container'));
 
-      // VSCode の languageId → Monaco languageId マッピング
       const monacoLangMap = {
         'javascriptreact': 'javascript',
         'typescriptreact': 'typescript',
-        'vue': 'html', // vue SFC の疑似ハイライト
+        'vue': 'html',
         'css': 'html',
         'html': 'html',
       };
@@ -460,11 +427,9 @@ ${escaped}
             verticalScrollbarSize: 6,
             horizontalScrollbarSize: 6,
             alwaysConsumeMouseWheel: false,
-            // 高さが可変なのでスクロールバーを非表示にする
             vertical: 'hidden',
           },
           padding: { top: 8, bottom: 8 },
-          // コンテナ高さ = コード行数なのでスクロールなしで全行表示できる
           wordWrap: 'on',
         });
         return { mon, model, editor };
@@ -546,13 +511,7 @@ ${escaped}
   }
 
   // ── モーダルシステム ────────────────────────────────────────
-  //
-  // .example-header クリック → モーダルを開く
-  // モーダル内に新規サンドボックスを初期化し、元セルのコードを引き継ぐ
-  // オーバーレイクリック / Esc / 閉じるボタン → モーダルを閉じる
-  // -------------------------------------------------------
 
-  /** モーダルオーバーレイ DOM（1つだけ生成して使い回す） */
   let modalOverlay = null;
   let modalCard    = null;
 
@@ -568,12 +527,10 @@ ${escaped}
     modalOverlay.appendChild(modalCard);
     document.body.appendChild(modalOverlay);
 
-    // オーバーレイ（カード外）クリックで閉じる
     modalOverlay.addEventListener('click', (e) => {
       if (e.target === modalOverlay) closeModal();
     });
 
-    // Esc キーで閉じる
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeModal();
     });
@@ -582,7 +539,6 @@ ${escaped}
   function openModal(sourceRoot) {
     ensureModal();
 
-    // 元セルからタイトル・説明・初期コードを取得
     const cell     = sourceRoot.closest('.example-cell');
     const titleEl  = cell ? cell.querySelector('.example-header strong')      : null;
     const descEl   = cell ? cell.querySelector('.example-header .description') : null;
@@ -592,8 +548,6 @@ ${escaped}
     const srcIndex   = sourceRoot.getAttribute('data-index') || '0';
     const modalIndex = `modal-${srcIndex}`;
 
-    // カード内 HTML を構築
-    // .dm-modal-body がスクロールコンテナになる
     modalCard.innerHTML = `
       <div class="dm-modal-header">
         <div class="dm-modal-header-text">
@@ -613,14 +567,11 @@ ${escaped}
       </div>
     `;
 
-    // 閉じるボタン
     modalCard.querySelector('.dm-modal-close').addEventListener('click', closeModal);
 
-    // モーダルを表示してからサンドボックスを初期化
     modalOverlay.classList.add('is-open');
     document.body.style.overflow = 'hidden';
 
-    // 少し遅延させて DOM が確定してから初期化
     requestAnimationFrame(() => {
       const newRoot = document.getElementById(`sandbox-root-${modalIndex}`);
       if (newRoot) initCell(newRoot);
@@ -632,7 +583,6 @@ ${escaped}
     modalOverlay.classList.remove('is-open');
     document.body.style.overflow = '';
 
-    // モーダル内の Monaco インスタンスをクリーンアップ（メモリリーク防止）
     if (modalCard) {
       const idx = (() => {
         const el = modalCard.querySelector('[data-index]');
@@ -650,7 +600,6 @@ ${escaped}
     }
   }
 
-  /** .example-header へのクリックリスナーを登録（initCell 完了後に呼ぶ） */
   function attachHeaderClickListener(rootEl) {
     const cell   = rootEl.closest('.example-cell');
     if (!cell) return;
