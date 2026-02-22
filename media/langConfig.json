@@ -1,0 +1,138 @@
+{
+  "javascript": {
+    "executionType": "terminal",
+    "command": "node {file}",
+    "filename": "test.js",
+    "deletefile": "",
+    "templatecode": "console.log(\"Hello World (JS)\");",
+    "promptHint": ""
+  },
+  "typescript": {
+    "executionType": "terminal",
+    "command": "ts-node {file}",
+    "filename": "test.ts",
+    "deletefile": "",
+    "templatecode": "const greet = (name: string) => `Hello ${name} (TS)`;\nconsole.log(greet(\"World\"));",
+    "promptHint": ""
+  },
+  "c": {
+    "executionType": "terminal",
+    "command": "gcc {file} -o a.out && ./a.out",
+    "filename": "test.c",
+    "deletefile": "a.out",
+    "templatecode": "#include <stdio.h>\nint main(){ printf(\"Hello C\\n\"); return 0; }",
+    "promptHint": "- The code is compiled as a single file 'test.c' with gcc.\n- Do NOT split code across multiple files or use external libraries beyond the C standard library.\n- Always define the entry point as 'int main()' and return 0."
+  },
+  "python": {
+    "executionType": "terminal",
+    "command": "python3 {file}",
+    "filename": "test.py",
+    "deletefile": "",
+    "templatecode": "print('Hello Python')",
+    "promptHint": ""
+  },
+  "java": {
+    "executionType": "terminal",
+    "command": "javac {file} && java Test",
+    "filename": "Test.java",
+    "deletefile": "Test.class",
+    "templatecode": "public class Test {\n  public static void main(String[] args) {\n    System.out.println(\"Hello Java\");\n  }\n}",
+    "promptHint": "- The file is saved as 'Test.java' and executed with 'java Test'.\n- The public class name MUST be exactly 'Test' to match the filename.\n- Do NOT use any other public class name (e.g. 'Main', 'Solution'). Only 'Test' is allowed.\n- All code must be written inside the single 'Test' class.\n- Non-public helper classes may be defined in the same file."
+  },
+  "cpp": {
+    "executionType": "terminal",
+    "command": "g++ {file} -o a.out && ./a.out",
+    "filename": "test.cpp",
+    "deletefile": "a.out",
+    "templatecode": "#include <iostream>\nint main() { std::cout << \"Hello C++\" << std::endl; return 0; }",
+    "promptHint": "- The code is compiled as a single file 'test.cpp' with g++.\n- Do NOT split code across multiple files or use external libraries beyond the C++ standard library (STL).\n- Always define the entry point as 'int main()' and return 0."
+  },
+  "go": {
+    "executionType": "terminal",
+    "command": "go run {file}",
+    "filename": "test.go",
+    "deletefile": "",
+    "templatecode": "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"Hello Go\") }",
+    "promptHint": ""
+  },
+  "php": {
+    "executionType": "terminal",
+    "command": "php {file}",
+    "filename": "test.php",
+    "deletefile": "",
+    "templatecode": "<?php\necho \"Hello PHP\\n\";\n?>",
+    "promptHint": ""
+  },
+  "ruby": {
+    "executionType": "terminal",
+    "command": "ruby {file}",
+    "filename": "test.rb",
+    "deletefile": "",
+    "templatecode": "puts 'Hello Ruby'",
+    "promptHint": ""
+  },
+  "rust": {
+    "executionType": "terminal",
+    "command": "rustc {file} && ./test",
+    "filename": "test.rs",
+    "deletefile": "test",
+    "templatecode": "fn main() {\n    println!(\"Hello Rust\");\n}",
+    "promptHint": "- The code is compiled as a single file 'test.rs' with 'rustc' directly (not Cargo).\n- Do NOT use 'extern crate' or any external crates; only the Rust standard library is available.\n- Do NOT split code across multiple files or use Cargo project structures.\n- Define the entry point as 'fn main()'."
+  },
+  "kotlin": {
+    "executionType": "terminal",
+    "command": "kotlinc {file} -include-runtime -d test.jar && java -jar test.jar",
+    "filename": "test.kt",
+    "deletefile": "test.jar",
+    "templatecode": "fun main() {\n    println(\"Hello Kotlin\")\n}",
+    "promptHint": "- The code is compiled as a single file 'test.kt' and run as a JAR.\n- Define the entry point as a top-level 'fun main()' function (not inside a class).\n- Do NOT split code across multiple files or use multi-file project structures.\n- External dependencies (Gradle/Maven) are not available; use only the Kotlin standard library."
+  },
+  "dart": {
+    "executionType": "terminal",
+    "command": "dart run {file}",
+    "filename": "test.dart",
+    "deletefile": "",
+    "templatecode": "void main() {\n  print('Hello Dart');\n}",
+    "promptHint": ""
+  },
+  "html": {
+    "executionType": "iframe-html",
+    "command": "",
+    "filename": "index.html",
+    "deletefile": "",
+    "templatecode": "<!DOCTYPE html>\n<html lang=\"ja\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Preview</title>\n</head>\n<body>\n  <h1>Hello HTML</h1>\n</body>\n</html>",
+    "promptHint": "- Output each example as a COMPLETE HTML document (<!DOCTYPE html>...).\n- Include all styles inline or in a <style> tag.\n- The code will be set as the srcdoc of an iframe directly."
+  },
+  "css": {
+    "executionType": "iframe-html",
+    "command": "",
+    "filename": "style.html",
+    "deletefile": "",
+    "templatecode": "<!DOCTYPE html>\n<html lang=\"ja\">\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body { font-family: sans-serif; padding: 20px; }\n    h1 { color: steelblue; }\n  </style>\n</head>\n<body>\n  <h1>Hello CSS</h1>\n  <p>This is a styled paragraph.</p>\n</body>\n</html>",
+    "promptHint": "- Output each example as a COMPLETE HTML document (<!DOCTYPE html>...).\n- Include all CSS inside a <style> tag in the <head>.\n- Add enough HTML elements in <body> to visually demonstrate the CSS.\n- Do NOT output CSS-only code; always wrap in a full HTML document."
+  },
+  "javascriptreact": {
+    "executionType": "iframe-react",
+    "command": "",
+    "filename": "app.jsx",
+    "deletefile": "",
+    "templatecode": "function App() {\n  return <h1>Hello React (JSX)</h1>;\n}\n\nReactDOM.createRoot(document.getElementById('root')).render(<App />);",
+    "promptHint": "- The sandbox already loads React 18, ReactDOM, and Babel standalone via CDN.\n- Output ONLY the component definition(s) and the ReactDOM.createRoot(...).render() call.\n- Do NOT include <script> tags, import statements, or HTML boilerplate.\n- A <div id=\"root\"></div> already exists in the page.\n- Example structure:\n  function App() { return <h1>Hello</h1>; }\n  ReactDOM.createRoot(document.getElementById('root')).render(<App />);"
+  },
+  "typescriptreact": {
+    "executionType": "iframe-react",
+    "command": "",
+    "filename": "app.tsx",
+    "deletefile": "",
+    "templatecode": "function App(): JSX.Element {\n  return <h1>Hello React (TSX)</h1>;\n}\n\nReactDOM.createRoot(document.getElementById('root')).render(<App />);",
+    "promptHint": "- The sandbox already loads React 18, ReactDOM, and Babel standalone via CDN.\n- Output ONLY the component definition(s) and the ReactDOM.createRoot(...).render() call.\n- Do NOT include <script> tags, import statements, or HTML boilerplate.\n- A <div id=\"root\"></div> already exists in the page.\n- Example structure:\n  function App(): JSX.Element { return <h1>Hello</h1>; }\n  ReactDOM.createRoot(document.getElementById('root')).render(<App />);"
+  },
+  "vue": {
+    "executionType": "iframe-vue",
+    "command": "",
+    "filename": "app.vue",
+    "deletefile": "",
+    "templatecode": "const { createApp } = Vue;\n\ncreateApp({\n  data() {\n    return { message: 'Hello Vue!' };\n  },\n  template: `<h1>{{ message }}</h1>`\n}).mount('#app');",
+    "promptHint": "- The sandbox already loads Vue 3 via CDN (window.Vue is available).\n- Output ONLY the createApp(...).mount('#app') call and component options.\n- Do NOT include <script> tags, import statements, or HTML boilerplate.\n- A <div id=\"app\"></div> already exists in the page.\n- Example structure:\n  const { createApp, ref } = Vue;\n  createApp({ setup() { ... }, template: `...` }).mount('#app');"
+  }
+}

@@ -5,10 +5,27 @@ import TurndownService from 'turndown';
 
 const MDN_BASE_URL = 'https://developer.mozilla.org';
 const MDN_SEARCH_API = `${MDN_BASE_URL}/api/v1/search`;
+//devDocsから対応言語を選抜
+const devDocsSlugs: Record<string, string> = {
+    'python': 'python~3.14',
+    'java': 'openjdk~25',
+    'c': 'c',
+    'cpp': 'cpp',
+    'go': 'go',
+    'php': 'php',
+    'ruby': 'ruby~4.0',
+    'rust': 'rust',
+    'kotlin': 'kotlin~1.9',
+    'dart': 'dart~2',
+    'javascriptreact': 'react',
+    'typescriptreact': 'react',
+    'vue': 'vue~3',
+}
 
 export interface DocSearchResult {
     title: string;
     url: string;
+    htmlUrl?: string;
     summary: string;
 }
 
@@ -32,31 +49,88 @@ export class DocService {
      * Search MDN for the given keyword/query.
      * Returns the top result or null if not found.
      */
-    async search(query: string): Promise<DocSearchResult | null> {
-        try {
-            const searchUrl = `${MDN_SEARCH_API}?q=${encodeURIComponent(query)}`;
-            console.log(`Searching MDN: ${searchUrl}`);
 
-            const response = await fetch(searchUrl);
-            if (!response.ok) {
-                console.error(`MDN Search failed: ${response.status} ${response.statusText}`);
-                return null;
-            }
+    async search(query: string, language: string): Promise<DocSearchResult | null> {
+        const slug = devDocsSlugs[language];
+        //MDNで対応している言語はMDNで検索、それ以外はdevDocsで検索
+        switch (language) {
+            case 'javascript':
+            case 'typescript':
+            case 'html':
+            case 'css':
+                try {
+                    const searchUrl = `${MDN_SEARCH_API}?q=${encodeURIComponent(query)}`;
+                    console.log(`Searching MDN: ${searchUrl}`);
 
-            const data = await response.json() as any;
-            if (data.documents && data.documents.length > 0) {
-                const topDoc = data.documents[0];
-                return {
-                    title: topDoc.title,
-                    url: `${MDN_BASE_URL}${topDoc.mdn_url}`,
-                    summary: topDoc.summary
-                };
-            }
+                    const response = await fetch(searchUrl);
+                    if (!response.ok) {
+                        console.error(`MDN Search failed: ${response.status} ${response.statusText}`);
+                        return null;
+                    }
 
-            return null;
-        } catch (error) {
-            console.error('Error searching MDN:', error);
-            return null;
+                    const data = await response.json() as any;
+                    if (data.documents && data.documents.length > 0) {
+                        const topDoc = data.documents[0];
+                        return {
+                            title: topDoc.title,
+                            url: `${MDN_BASE_URL}${topDoc.mdn_url}`,
+                            htmlUrl: `${MDN_BASE_URL}${topDoc.mdn_url}`,
+                            summary: topDoc.summary
+                        };
+                    }
+
+                    return null;
+                } catch (error) {
+                    console.error('Error searching MDN:', error);
+                    return null;
+                }
+            default:
+                if (slug) {
+                    try {
+                        const indexUrl = `https://devdocs.io/docs/${slug}/index.json`;
+                        console.log(`[DevDocs] Fetching index for ${language}: ${indexUrl}`);
+                        const res = await fetch(indexUrl);
+                        if (!res.ok) {
+                            console.error(`DevDocs index search failed: ${res.status}`);
+                            return null;
+                        }
+
+                        //対応するメソッドやクラスを検索
+                        const index = await res.json() as any;
+                        const entry = index.entries.find((e: any) =>
+                            e.name === query || e.name === `${query}()` || e.name.startsWith(query)
+                        );
+
+                        if (entry) {
+                            const [pagePath, hash] = entry.path.split('#');
+                            // ユーザーが見るURL
+                            const userUrl = `https://devdocs.io/${slug}/${pagePath}${hash ? '#' + hash : ''}`;
+                            // AIに投げる用のHTML
+                            const htmlUrl = `https://documents.devdocs.io/${slug}/${pagePath}.html${hash ? '#' + hash : ''}`;
+                            return {
+                                title: entry.name,
+                                url: userUrl,
+                                htmlUrl: htmlUrl,
+                                summary: `Documentation from DevDocs for ${language}`
+                            };
+                        }
+
+                        // FALLBACK: If React/JSX/TSX doesnt find the keyword in DevDocs (e.g. 'const', 'map'),
+                        // try searching MDN as a standard javascript/typescript query instead.
+                        if (language === 'javascriptreact' || language === 'typescriptreact' || language === 'vue') {
+                            console.log(`[Fallback] Keyword "${query}" not found in React/Vue docs. Searching MDN for JS/TS instead.`);
+                            // Call this same search method recursively, but pretending we are just 'javascript' (or 'typescript')
+                            return await this.search(query, language === 'typescriptreact' ? 'typescript' : 'javascript');
+                        }
+
+                        return null;
+                    } catch (error) {
+                        console.error('Error searching DevDocs:', error);
+                        return null;
+                    }
+                }
+                //対応していない場合
+                throw new Error(`Language "${language}" is not supported.`);
         }
     }
 
@@ -76,9 +150,36 @@ export class DocService {
             const dom = new JSDOM(html);
             const doc = dom.window.document;
 
-            // Extract the main content (usually <article>)
-            // MDN uses <article class="main-page-content"> or just <main>
-            const mainContent = doc.querySelector('article.main-page-content') || doc.querySelector('main') || doc.body;
+            let mainContent: HTMLElement | null = null;
+
+            // URLにハッシュがあるかチェック
+            const hashIndex = url.indexOf('#');
+            if (hashIndex !== -1) {
+                const hash = url.substring(hashIndex + 1);
+                console.log(`[DevDocs Extract] Attempting to extract element with id="${hash}"`);
+                const targetElement = doc.getElementById(hash);
+
+                if (targetElement) {
+                    // For DevDocs (like Python), specific entries are often a <dt> and following <dd>s
+                    const wrapper = doc.createElement('div');
+                    wrapper.appendChild(targetElement.cloneNode(true));
+
+                    let next = targetElement.nextElementSibling;
+                    // Gather subsequent sibling description elements until the next definition
+                    while (next && next.tagName !== 'DT' && next.tagName !== 'DL' && next.tagName !== 'H1' && next.tagName !== 'H2' && next.tagName !== 'H3') {
+                        wrapper.appendChild(next.cloneNode(true));
+                        next = next.nextElementSibling;
+                    }
+                    mainContent = wrapper;
+                    console.log(mainContent);
+                    console.log(mainContent.innerHTML);
+                }
+            }
+
+            // Fallback to standard MDN extraction if no hash or hash element wasn't found
+            if (!mainContent) {
+                mainContent = doc.querySelector('article.main-page-content') || doc.querySelector('main') || doc.body;
+            }
 
             if (!mainContent) {
                 return 'No content found.';
@@ -87,7 +188,10 @@ export class DocService {
             // Remove sidebar, nav, footer, scripts if they are inside main (usually they are not, but good to be safe)
             const clutterSelectors = ['.locale-container', '.toc-container', '.metadata', 'aside', 'script', 'style'];
             clutterSelectors.forEach(selector => {
-                mainContent.querySelectorAll(selector).forEach(el => el.remove());
+                // Ignore errors if elements don't exist
+                try {
+                    mainContent?.querySelectorAll(selector).forEach(el => el.remove());
+                } catch (e) { }
             });
 
             const markdown = this.turndownService.turndown(mainContent.innerHTML);
