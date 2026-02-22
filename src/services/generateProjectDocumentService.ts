@@ -1,4 +1,3 @@
-import { Project } from 'ts-morph';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,6 +6,7 @@ import pLimit from 'p-limit';
 import { GeminiService } from './geminiService';
 import { ExecutionService } from './executionService';
 
+// Gemini が返す JSON のインターフェース（言語非依存）
 interface GeminiDocResponse {
     fileDescription: string;
     classes: {
@@ -15,12 +15,26 @@ interface GeminiDocResponse {
         methods: {
             name: string;
             description: string;
+            params: { name: string; type: string }[];
+            returnType: string;
             examples: {
                 title: string;
                 description: string;
                 code: string;
                 expectedOutput: string;
             }[];
+        }[];
+    }[];
+    functions: {
+        name: string;
+        description: string;
+        params: { name: string; type: string }[];
+        returnType: string;
+        examples: {
+            title: string;
+            description: string;
+            code: string;
+            expectedOutput: string;
         }[];
     }[];
 }
@@ -30,6 +44,36 @@ interface TocEntry {
     fileName: string;
     description: string;
 }
+
+// 対応するソースファイルの拡張子一覧
+const SOURCE_EXTENSIONS = new Set([
+    '.ts', '.tsx', '.js', '.jsx',
+    '.py',
+    '.java',
+    '.go',
+    '.rs',
+    '.c', '.cpp', '.h', '.hpp',
+    '.cs',
+    '.rb',
+    '.php',
+    '.swift',
+    '.kt', '.kts',
+    '.dart',
+    '.vue',
+]);
+
+// 除外するディレクトリ名
+const EXCLUDE_DIRS = new Set([
+    'node_modules', '.git', '.docs', 'dist', 'out',
+    '.vscode', '__pycache__', '.next', 'build', 'coverage',
+    'vendor', 'target',
+]);
+
+// 除外するファイル名パターン
+const EXCLUDE_FILES = new Set([
+    '.d.ts',
+]);
+
 export class GenerateProjectDocumentService {
     context: vscode.ExtensionContext;
     geminiService: GeminiService;
@@ -63,7 +107,38 @@ export class GenerateProjectDocumentService {
     }
 
     /**
-     * ドキュメント生成が実行
+     * ワークスペース内のソースファイルを再帰的に列挙する（パーサー不要）
+     */
+    private collectSourceFiles(dir: string): string[] {
+        const results: string[] = [];
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+            return results;
+        }
+
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+
+            if (entry.isDirectory()) {
+                if (EXCLUDE_DIRS.has(entry.name)) continue;
+                results.push(...this.collectSourceFiles(fullPath));
+            } else if (entry.isFile()) {
+                const ext = path.extname(entry.name);
+                // .d.ts ファイルを除外
+                if (entry.name.endsWith('.d.ts')) continue;
+                if (EXCLUDE_FILES.has(ext)) continue;
+                if (SOURCE_EXTENSIONS.has(ext)) {
+                    results.push(fullPath);
+                }
+            }
+        }
+        return results;
+    }
+
+    /**
+     * ドキュメント生成を実行（Gemini 全任せ、パーサー不要）
      * ユーザーが開いているワークスペースのルートディレクトリを分析対象とする
      */
     async processProject() {
@@ -72,13 +147,6 @@ export class GenerateProjectDocumentService {
             throw new Error('ワークスペースが開かれていません。フォルダを開いてから実行してください。');
         }
 
-        // tsconfig.json を探索（直下 → サブディレクトリの順）
-        const tsconfigPath = this.findTsConfig(workspaceRoot);
-        if (!tsconfigPath) {
-            throw new Error(`tsconfig.json がワークスペース内に見つかりません: ${workspaceRoot}`);
-        }
-        console.log(`📂 tsconfig.json を検出: ${tsconfigPath}`);
-
         // ワークスペース名を取得
         const workspaceName = path.basename(workspaceRoot);
 
@@ -86,104 +154,118 @@ export class GenerateProjectDocumentService {
         const outputDir = this.getOutputDir();
         fs.mkdirSync(outputDir, { recursive: true });
 
-        const project = new Project({
-            tsConfigFilePath: tsconfigPath,
-        })
+        // ソースファイルを再帰的に列挙（パーサー不要）
+        const sourceFiles = this.collectSourceFiles(workspaceRoot);
+        console.log(`📂 ${sourceFiles.length} 個のソースファイルを検出`);
+
+        if (sourceFiles.length === 0) {
+            throw new Error('ソースファイルが見つかりません。対象の拡張子: ' + Array.from(SOURCE_EXTENSIONS).join(', '));
+        }
 
         const tocEntries: TocEntry[] = [];
-        const sourceFiles = project.getSourceFiles();
 
-        const tasks = sourceFiles.map(sourceFile => this.limit(async () => {
-            const originalFilePath = sourceFile.getFilePath();
-            const fileName = sourceFile.getBaseName();
-            // ワークスペースルートからの相対パスを計算
-            const relativePath = path.relative(workspaceRoot, originalFilePath);
-            // HTMLファイルの出力先パス
-            const outputFilePath = path.join(outputDir, relativePath).replace(/\.ts$/, '.html');
-            // HTML内でリンクするためのURLパス（Windows環境のバックスラッシュをスラッシュに置換）
-            const urlPath = relativePath.replace(/\.ts$/, '.html').replace(/\\/g, '/');
+        const tasks = sourceFiles.map(filePath => this.limit(async () => {
+            const fileName = path.basename(filePath);
+            try {
+                const fileContent = fs.readFileSync(filePath, 'utf-8');
+                const relativePath = path.relative(workspaceRoot, filePath);
+                const ext = path.extname(filePath);
 
-            const aiJson = await this.askGeminiForDescriptionsInJson(sourceFile.getText(), sourceFile.getBaseName(), this.geminiService);
-            if (!aiJson) return;
+                // HTMLファイルの出力先パス（元の拡張子 → .html）
+                const outputFilePath = path.join(outputDir, relativePath).replace(new RegExp(`\\${ext}$`), '.html');
+                // HTML内でリンクするためのURLパス
+                const urlPath = relativePath.replace(new RegExp(`\\${ext}$`), '.html').replace(/\\/g, '/');
 
-            // 目次に登録
-            tocEntries.push({ url: urlPath, fileName: fileName, description: aiJson.fileDescription });
+                // Gemini に構造抽出 + 説明 + サンプルコード + 期待出力を一括生成させる
+                const aiJson = await this.askGeminiForDescriptionsInJson(fileContent, fileName, this.geminiService);
+                if (!aiJson) {
+                    console.warn(`⚠️ ${fileName}: Gemini からの応答を取得できませんでした。スキップします。`);
+                    return;
+                }
 
-            // ルート（index.html）へ戻るための相対パスを計算
-            // 例: utils/math.html なら "../index.html"
-            const depth = relativePath.split(path.sep).length - 1;
-            const backToRootPath = depth === 0 ? './index.html' : '../'.repeat(depth) + 'index.html';
+                // 目次に登録
+                tocEntries.push({ url: urlPath, fileName: fileName, description: aiJson.fileDescription });
 
-            let htmlBody = `<div class="file-desc">${aiJson.fileDescription}</div>`;
-            const classes = sourceFile.getClasses();
-            for (const cls of classes) {
-                const className = cls.getName() || "無名クラス";
-                const aiClassInfo = aiJson.classes?.find(c => c.name === className);
+                // ルート（index.html）へ戻るための相対パスを計算
+                const depth = relativePath.split(path.sep).length - 1;
+                const backToRootPath = depth === 0 ? './index.html' : '../'.repeat(depth) + 'index.html';
 
-                htmlBody += `<div class="class-card"><h2>📦 Class: ${className}</h2>`;
-                if (aiClassInfo) htmlBody += `<p>${aiClassInfo.description}</p>`;
+                // Gemini の JSON から HTML を組み立て（パーサー不要）
+                let htmlBody = `<div class="file-desc">${aiJson.fileDescription}</div>`;
 
-                for (const method of cls.getMethods()) {
-                    const methodName = method.getName();
-                    const aiMethodInfo = aiClassInfo?.methods?.find(m => m.name === methodName);
+                // クラスの処理
+                for (const cls of (aiJson.classes || [])) {
+                    htmlBody += `<div class="class-card"><h2>📦 Class: ${cls.name}</h2>`;
+                    htmlBody += `<p>${cls.description}</p>`;
 
-                    htmlBody += `<div class="method-card"><h3>⚙️ ${methodName}</h3>`;
-                    if (aiMethodInfo) htmlBody += `<p>${aiMethodInfo.description}</p>`;
+                    for (const method of (cls.methods || [])) {
+                        htmlBody += `<div class="method-card"><h3>⚙️ ${method.name}</h3>`;
+                        htmlBody += `<p>${method.description}</p>`;
+
+                        // 引数リスト（Gemini から取得）
+                        htmlBody += `<strong>引数:</strong><ul class="param-list">`;
+                        if (!method.params || method.params.length === 0) {
+                            htmlBody += `<li>なし</li>`;
+                        } else {
+                            for (const p of method.params) {
+                                htmlBody += `<li><span class="badge">${p.name}</span> : <code>${p.type}</code></li>`;
+                            }
+                        }
+                        htmlBody += `</ul><strong>戻り値:</strong> <code>${method.returnType || 'void'}</code>`;
+
+                        // 実行例データを構築
+                        const examplesWithOutput = await this.buildExamplesWithOutput(method.examples || [], filePath);
+
+                        // data 属性に JSON を埋め込み
+                        const summary = method.description || '';
+                        const examplesJson = JSON.stringify(examplesWithOutput).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                        const summaryEscaped = summary.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                        htmlBody += `<a href="#" class="explain-link" data-keyword="${method.name}" data-examples="${examplesJson}" data-summary="${summaryEscaped}">🔍 実行例を見る</a></div>`;
+                    }
+                    htmlBody += `</div>`;
+                }
+
+                // トップレベル関数の処理（クラスなし言語対応）
+                for (const func of (aiJson.functions || [])) {
+                    htmlBody += `<div class="method-card"><h3>🔧 ${func.name}</h3>`;
+                    htmlBody += `<p>${func.description}</p>`;
 
                     htmlBody += `<strong>引数:</strong><ul class="param-list">`;
-                    const params = method.getParameters();
-                    if (params.length === 0) htmlBody += `<li>なし</li>`;
-                    else params.forEach(p => htmlBody += `<li><span class="badge">${p.getName()}</span> : <code>${this.cleanTypeName(p.getType().getText())}</code></li>`);
-                    htmlBody += `</ul><strong>戻り値:</strong> <code>${this.cleanTypeName(method.getReturnType().getText())}</code>`;
-
-                    // 実行例データを構築（Gemini 生成 + ExecutionService 実行）
-                    const aiExamples = aiMethodInfo?.examples || [];
-                    const examplesWithOutput = [];
-
-                    // コンパイル済みJSの絶対パスを算出（src/ → out/, .ts → .js）
-                    const compiledFilePath = originalFilePath
-                        .replace(/\.ts$/, '.js')
-                        .replace(/[\\/]src[\\/]/, path.sep + 'out' + path.sep)
-                        .replace(/\\/g, '/'); // Windows パス区切りをスラッシュに統一
-
-                    // require 文を自動生成（対象クラスをインポート）
-                    const requireLine = `const { ${className} } = require('${compiledFilePath}');\n`;
-
-                    for (const ex of aiExamples) {
-                        // サンプルコードの先頭に require を自動挿入して実行
-                        const codeWithRequire = requireLine + ex.code;
-                        const execResult = await this.executionService.execute(codeWithRequire);
-
-                        // 実行成功 → 本物の出力、失敗 → Gemini の期待出力にフォールバック
-                        const output = execResult.success
-                            ? execResult.output
-                            : (ex.expectedOutput || `Execution failed: ${execResult.error}`);
-
-                        examplesWithOutput.push({
-                            title: ex.title,
-                            description: ex.description,
-                            code: codeWithRequire,
-                            executionOutput: output
-                        });
+                    if (!func.params || func.params.length === 0) {
+                        htmlBody += `<li>なし</li>`;
+                    } else {
+                        for (const p of func.params) {
+                            htmlBody += `<li><span class="badge">${p.name}</span> : <code>${p.type}</code></li>`;
+                        }
                     }
+                    htmlBody += `</ul><strong>戻り値:</strong> <code>${func.returnType || 'void'}</code>`;
 
-                    // data 属性に JSON を埋め込み
-                    const summary = aiMethodInfo?.description || '';
+                    // 実行例データを構築
+                    const examplesWithOutput = await this.buildExamplesWithOutput(func.examples || [], filePath);
+
+                    const summary = func.description || '';
                     const examplesJson = JSON.stringify(examplesWithOutput).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
                     const summaryEscaped = summary.replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-                    htmlBody += `<a href="#" class="explain-link" data-keyword="${methodName}" data-examples="${examplesJson}" data-summary="${summaryEscaped}">🔍 実行例を見る</a></div>`;
+                    htmlBody += `<a href="#" class="explain-link" data-keyword="${func.name}" data-examples="${examplesJson}" data-summary="${summaryEscaped}">🔍 実行例を見る</a></div>`;
                 }
-                htmlBody += `</div>`;
-            }
 
-            const finalHtml = this.generateHtmlTemplate(fileName, htmlBody, backToRootPath);
-            fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });
-            fs.writeFileSync(outputFilePath, finalHtml);
-            console.log(`✅ 生成完了: ${urlPath}`);
+                const finalHtml = this.generateHtmlTemplate(fileName, htmlBody, backToRootPath);
+                fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });
+                fs.writeFileSync(outputFilePath, finalHtml);
+                console.log(`✅ 生成完了: ${urlPath}`);
+            } catch (error) {
+                // 個別ファイルのエラーは他のファイルの処理を止めない
+                console.error(`❌ ${fileName} の処理でエラー発生（スキップします）:`, error);
+            }
         }));
 
-        // 全ての個別ページの生成を待つ
-        await Promise.all(tasks);
+        // 全ての個別ページの生成を待つ（1ファイルの失敗が他に影響しない）
+        const results = await Promise.allSettled(tasks);
+        const failedCount = results.filter(r => r.status === 'rejected').length;
+        if (failedCount > 0) {
+            console.warn(`⚠️ ${failedCount} 件のファイルで処理に失敗しました`);
+        }
+        console.log(`📊 処理結果: 成功 ${tocEntries.length} 件 / 全 ${sourceFiles.length} 件`);
 
         console.log("📝 トップページ (index.html) を生成中...");
         const indexHtml = this.generateIndexHtml(tocEntries, workspaceName);
@@ -194,83 +276,60 @@ export class GenerateProjectDocumentService {
     }
 
     /**
-     * import("...").TypeName のようなフルパスの型表記を TypeName だけにクリーンアップする
-     * 例: import("c:/path/to/file").LangConfigEntry → LangConfigEntry
-     * 例: { lang?: import("...").X | undefined; } → { lang?: X | undefined; }
+     * サンプルコードの実行結果を構築する
+     * 実行成功 → 本物の出力、失敗 → Gemini の期待出力にフォールバック
      */
-    private cleanTypeName(typeName: string): string {
-        const cleanedTypeName = typeName.replace(/import\(["'][^"']+["']\)\./g, '');
-        return cleanedTypeName;
+    private async buildExamplesWithOutput(
+        examples: { title: string; description: string; code: string; expectedOutput: string }[],
+        originalFilePath: string
+    ) {
+        const examplesWithOutput = [];
+
+        for (const ex of examples) {
+            // サンプルコードをそのまま実行してみる
+            const execResult = await this.executionService.execute(ex.code);
+
+            // 実行成功 → 本物の出力、失敗 → Gemini の期待出力にフォールバック
+            const output = execResult.success
+                ? execResult.output
+                : (ex.expectedOutput || `Execution failed: ${execResult.error}`);
+
+            examplesWithOutput.push({
+                title: ex.title,
+                description: ex.description,
+                code: ex.code,
+                executionOutput: output
+            });
+        }
+
+        return examplesWithOutput;
     }
 
     /**
-     * ワークスペース内を再帰的に探索して tsconfig.json を見つける
-     * 直下を優先し、なければサブディレクトリを探索する
-     * @param rootDir 探索開始ディレクトリ
-     * @returns tsconfig.json の絶対パス、見つからなければ null
+     * Gemini にソースコード全文を送り、構造・説明・サンプルコード・期待出力を一括生成させる
+     * パーサー不要：Gemini がコード解析を全て行う
      */
-    private findTsConfig(rootDir: string): string | null {
-        // まず直下を確認
-        const directPath = path.join(rootDir, 'tsconfig.json');
-        if (fs.existsSync(directPath)) {
-            return directPath;
-        }
-
-        // 除外するディレクトリ名
-        const excludeDirs = new Set(['node_modules', '.git', '.docs', 'dist', 'out', '.vscode']);
-
-        // サブディレクトリを再帰探索
-        const search = (dir: string): string | null => {
-            let entries: fs.Dirent[];
-            try {
-                entries = fs.readdirSync(dir, { withFileTypes: true });
-            } catch {
-                return null;
-            }
-
-            for (const entry of entries) {
-                if (!entry.isDirectory()) continue;
-                if (excludeDirs.has(entry.name)) continue;
-
-                const candidate = path.join(dir, entry.name, 'tsconfig.json');
-                if (fs.existsSync(candidate)) {
-                    return candidate;
-                }
-            }
-
-            // 1階層で見つからなければさらに深く探索
-            for (const entry of entries) {
-                if (!entry.isDirectory()) continue;
-                if (excludeDirs.has(entry.name)) continue;
-
-                const found = search(path.join(dir, entry.name));
-                if (found) return found;
-            }
-
-            return null;
-        };
-
-        return search(rootDir);
-    }
-
     async askGeminiForDescriptionsInJson(fileContent: string, fileName: string, geminiService: GeminiService): Promise<GeminiDocResponse | null> {
         const prompt = `
-あなたはTypeScriptのコード解析アシスタントです。
-以下のファイルの内容を読み取り、ファイル全体、クラス、メソッドの「説明文（概要）」を抽出・生成してください。
-引数や戻り値の解析は不要です。自然言語による役割の説明だけに集中してください。
+あなたはソースコード解析のエキスパートです。
+以下のファイルの内容を読み取り、ファイル全体の概要、クラス、メソッド、トップレベル関数の「説明文（概要）」を抽出・生成してください。
+各メソッド・関数について「引数」「戻り値」「実行例（examples）」も生成してください。
 
+【重要】この機能は言語に依存しません。TypeScript, JavaScript, Python, Java, Go, Rust, C++, C, C#, Ruby, PHP, Swift, Kotlin, Dart, Vue 等どの言語のコードでも分析してください。
 
-また、各メソッドについて「実行例（examples）」も生成してください。
-実行例はそのメソッドの「使い方のパターン」を示すサンプルコードです。
+【関数の分類ルール】
+- クラスのメソッドは "classes" 内の "methods" に入れてください。
+- export function, function, def など「クラスに属さないトップレベル関数・エクスポートされた関数」は全て "functions" 配列に入れてください。
+- TypeScript/JavaScript の export function, export const, export default function なども "functions" に含めてください。
+- Python の def 関数（クラス外）も "functions" に含めてください。
 
 【サンプルコードの厳守ルール】
-- require()やimport文は絶対に書かないでください。モジュールの読み込みはシステムが自動で行います。
-- 対象クラスはすでにインポート済みとして、直接インスタンスを生成して使ってください。
-- 例: const service = new ClassName(); const result = await service.methodName(args);
-- console.logで結果を出力してください。
-- 非同期メソッドの場合はasync/awaitを使い、即時実行関数 (async () => { ... })(); で囲んでください。
-- 各メソッドにつき1つの実行例を生成してください。
-- 各実行例に「expectedOutput」フィールドを含めてください。これはそのサンプルコードを実行した場合にconsole.logに表示されると期待される出力テキストです。
+- require()やimport文は絶対に書かないでください。
+- 対象クラスや関数はすでにインポート済みとして、直接利用してください。
+- console.log（または対象言語の標準出力）で結果を出力してください。
+- 非同期処理の場合は適切にawait等で囲んでください。
+- 各メソッド/関数につき1つの実行例を生成してください。
+- 各実行例に「expectedOutput」フィールドを含めてください。これはそのコードを実行した場合に標準出力に表示されると期待されるテキストです。
 
 【厳守事項】
 - 返答は必ず以下のJSONフォーマットのみとし、マークダウン（\`\`\`json など）や挨拶文は一切含めないでください。
@@ -286,6 +345,8 @@ export class GenerateProjectDocumentService {
         {
           "name": "メソッド名",
           "description": "このメソッドの役割や処理内容",
+          "params": [{"name": "引数名", "type": "型名"}],
+          "returnType": "戻り値の型",
           "examples": [
             {
               "title": "実行例のタイトル",
@@ -297,8 +358,28 @@ export class GenerateProjectDocumentService {
         }
       ]
     }
+  ],
+  "functions": [
+    {
+      "name": "関数名",
+      "description": "この関数の役割",
+      "params": [{"name": "引数名", "type": "型名"}],
+      "returnType": "戻り値の型",
+      "examples": [
+        {
+          "title": "実行例のタイトル",
+          "description": "この実行例の説明",
+          "code": "console.log('Hello');",
+          "expectedOutput": "Hello"
+        }
+      ]
+    }
   ]
 }
+
+※ クラスがないファイルの場合、"classes" は空配列 [] にしてください。
+※ トップレベル関数がないファイルの場合、"functions" は空配列 [] にしてください。
+※ export function や export const のような「クラスに属さない関数」は必ず "functions" に入れてください。見落とさないでください。
 
 対象ファイル: ${fileName}
 コード:
@@ -324,10 +405,6 @@ ${fileContent}
 
     /**
      * 個別ページのHTMLテンプレート（Homeに戻るリンク付き）
-     * @param fileName 
-     * @param bodyContent 
-     * @param backToRootPath 
-     * @returns 
      */
     generateHtmlTemplate(fileName: string, bodyContent: string, backToRootPath: string): string {
         return `
@@ -364,8 +441,6 @@ ${fileContent}
 
     /**
      * テンプレートに従ってトップページを生成します
-     * @param entries 
-     * @returns 
      */
     generateIndexHtml(entries: TocEntry[], workspaceName: string = 'Project'): string {
         // リンクのカード一覧を生成
