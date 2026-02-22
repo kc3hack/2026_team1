@@ -57,6 +57,7 @@ DocMateは、MDNドキュメントを起点として、
 
 を表示します。
 
+
 ## 📄 Explain File（ファイル構造の理解）
 Explorer上でファイルを右クリックすると、
 
@@ -91,6 +92,9 @@ Explorer上でファイルを右クリックすると、
 1. VS Codeエディタ上で関数やAPI名を右クリック
 2. 「DocMate: Explain」を選択
 3. Webviewパネルに要約とサンプルが表示される
+
+https://github.com/user-attachments/assets/ee9cce27-166a-4683-9017-86a7e2150e70
+
 
 ### ▶ ファイル構造を理解する
 
