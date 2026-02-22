@@ -101,6 +101,9 @@ https://github.com/user-attachments/assets/ee9cce27-166a-4683-9017-86a7e2150e70
 1. Explorerでファイルを右クリック
 2. 「DocMate: AIで構造と依存関係を解説」を選択
 
+https://github.com/user-attachments/assets/22a05778-3597-4dbb-9862-57d6ab8f9f09
+
+
 ## 動作イメージ
 
 - 要約は日本語で表示
