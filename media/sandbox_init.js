@@ -32,9 +32,9 @@
   // ── エディタ高さ計算ユーティリティ ──────────────────────────
   //  CSS の --md-editor-* トークンと合わせる
   const EDITOR_LINE_HEIGHT = 24;   // px  (monaco fontSize:13 + 余白)
-  const EDITOR_PADDING_V   = 6;    // px  (上下パディング合計の半分)
-  const EDITOR_MIN_LINES   = 4;
-  const EDITOR_MAX_LINES   = 30;
+  const EDITOR_PADDING_V = 6;    // px  (上下パディング合計の半分)
+  const EDITOR_MIN_LINES = 4;
+  const EDITOR_MAX_LINES = 30;
 
   /**
    * コード文字列の行数からエディタの最適な高さ (px) を計算する。
@@ -62,7 +62,7 @@
     containerEl.style.height = h + 'px';
     // Monaco に新しいサイズを伝える
     if (monacoRef && monacoRef.editor) {
-      try { monacoRef.editor.layout(); } catch (_) {}
+      try { monacoRef.editor.layout(); } catch (_) { }
     }
   }
 
@@ -143,9 +143,8 @@ ${escaped}
       }
 
       default:
-        return `<pre style="padding:16px;font-family:monospace;">${
-          code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        }</pre>`;
+        return `<pre style="padding:16px;font-family:monospace;">${code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          }</pre>`;
     }
   }
 
@@ -213,7 +212,7 @@ ${escaped}
     const existing = rootEl.getAttribute('data-sandbox-initialized');
     if (existing === '1') return;
 
-    const index   = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
+    const index = rootEl.getAttribute('data-index') || rootEl.id || `auto-${Math.random().toString(36).slice(2)}`;
     const isModal = rootEl.getAttribute('data-is-modal') === '1';
     rootEl.setAttribute('data-sandbox-initialized', '1');
 
@@ -245,13 +244,13 @@ ${escaped}
     `;
 
     // UI refs
-    const langSelect      = rootEl.querySelector('.sb-langSelect');
-    const runBtn          = rootEl.querySelector('.sb-runBtn');
-    const loadBtn         = rootEl.querySelector('.sb-loadBtn');
-    const execTextarea    = rootEl.querySelector('.sb-execCommand');
+    const langSelect = rootEl.querySelector('.sb-langSelect');
+    const runBtn = rootEl.querySelector('.sb-runBtn');
+    const loadBtn = rootEl.querySelector('.sb-loadBtn');
+    const execTextarea = rootEl.querySelector('.sb-execCommand');
     const editorContainer = rootEl.querySelector('.sb-editor');
-    const outputPre       = rootEl.querySelector('.output-area');
-    const cmdArea         = rootEl.querySelector('.sb-cmd-area'); // ← 追加：cmdArea を正しく取得
+    const outputPre = rootEl.querySelector('.output-area');
+    const cmdArea = rootEl.querySelector('.sb-cmd-area'); // ← 追加：cmdArea を正しく取得
 
     // populate languages
     const LANG_CONFIG = window.LANG_CONFIG || {};
@@ -303,10 +302,12 @@ ${escaped}
     });
 
     // cell object（1つだけ定義）
+    const preGeneratedOutput = decodeInitialCode(rootEl.getAttribute('data-execution-output') || '');
     const cellObj = {
       rootEl,
       index: String(index),
       outputEl: outputPre,
+      preGeneratedOutput, // プリ生成された実行結果を保持
       append(s) {
         // iframe モードの場合はテキスト追記しない
         if (outputPre && !outputPre.querySelector('iframe.sb-preview-iframe')) {
@@ -317,10 +318,15 @@ ${escaped}
     };
     cells.set(String(index), cellObj);
 
+    // プリ生成された実行結果があれば初期表示
+    if (preGeneratedOutput && outputPre) {
+      outputPre.textContent = preGeneratedOutput;
+    }
+
     // ---- Load Template（初期コードに戻す） ----
     loadBtn.addEventListener('click', () => {
       if (monacoRef && monacoRef.model) {
-        try { monacoRef.model.setValue(initialCode); } catch (_) {}
+        try { monacoRef.model.setValue(initialCode); } catch (_) { }
       } else {
         editorContainer.textContent = initialCode;
         updateEditorHeight(editorContainer, null, initialCode, isModal);
@@ -331,7 +337,7 @@ ${escaped}
     runBtn.addEventListener('click', () => {
       let code = '';
       if (monacoRef && monacoRef.model) {
-        try { code = monacoRef.model.getValue(); } catch (_) {}
+        try { code = monacoRef.model.getValue(); } catch (_) { }
       }
       if (!code) code = editorContainer.textContent || '';
 
@@ -368,7 +374,7 @@ ${escaped}
     tryLoadMonaco(editorContainer, initialCode, curLang)
       .then(res => {
         monacoRef.editor = res.editor;
-        monacoRef.model  = res.model;
+        monacoRef.model = res.model;
 
         try {
           const val = initialCode
@@ -384,7 +390,7 @@ ${escaped}
           try {
             const code = monacoRef.model.getValue();
             updateEditorHeight(editorContainer, monacoRef, code, isModal);
-          } catch (_) {}
+          } catch (_) { }
         });
       })
       .catch(e => {
@@ -513,7 +519,7 @@ ${escaped}
   // ── モーダルシステム ────────────────────────────────────────
 
   let modalOverlay = null;
-  let modalCard    = null;
+  let modalCard = null;
 
   function ensureModal() {
     if (modalOverlay) return;
@@ -539,13 +545,13 @@ ${escaped}
   function openModal(sourceRoot) {
     ensureModal();
 
-    const cell     = sourceRoot.closest('.example-cell');
-    const titleEl  = cell ? cell.querySelector('.example-header strong')      : null;
-    const descEl   = cell ? cell.querySelector('.example-header .description') : null;
-    const title    = titleEl ? titleEl.textContent : '';
-    const desc     = descEl  ? descEl.textContent  : '';
+    const cell = sourceRoot.closest('.example-cell');
+    const titleEl = cell ? cell.querySelector('.example-header strong') : null;
+    const descEl = cell ? cell.querySelector('.example-header .description') : null;
+    const title = titleEl ? titleEl.textContent : '';
+    const desc = descEl ? descEl.textContent : '';
     const initialRaw = sourceRoot.getAttribute('data-initial-code') || '';
-    const srcIndex   = sourceRoot.getAttribute('data-index') || '0';
+    const srcIndex = sourceRoot.getAttribute('data-index') || '0';
     const modalIndex = `modal-${srcIndex}`;
 
     modalCard.innerHTML = `
@@ -595,13 +601,13 @@ ${escaped}
             if (m.uri.toString().includes('modal')) m.dispose();
           });
         }
-      } catch (_) {}
+      } catch (_) { }
       modalCard.innerHTML = '';
     }
   }
 
   function attachHeaderClickListener(rootEl) {
-    const cell   = rootEl.closest('.example-cell');
+    const cell = rootEl.closest('.example-cell');
     if (!cell) return;
     const header = cell.querySelector('.example-header');
     if (!header || header.dataset.dmModal) return;
@@ -644,8 +650,22 @@ ${escaped}
       return;
     }
     if (msg.kind === 'exit') {
+      const exitCode = msg.code;
       cells.forEach(c => c.append(`\n[process exited, code=${msg.code}, signal=${msg.signal}]\n`));
+      // 実行失敗時はプリ生成された出力にフォールバック + エラーログも表示
+      if (exitCode !== 0) {
+        cells.forEach(c => {
+          if (c.preGeneratedOutput && c.outputEl) {
+            const errorLog = c.outputEl.textContent || '';
+            c.outputEl.textContent = c.preGeneratedOutput
+              + '\n\n(ℹ️ ライブ実行は失敗したため、AIによる期待出力を表示しています)'
+              + '\n\n--- エラーログ ---\n'
+              + errorLog;
+          }
+        });
+      }
       cells.forEach((c, idx) => restoreRunBtn(idx));
+      activeIndex = null;
       return;
     }
     if (msg.kind === 'status') {
